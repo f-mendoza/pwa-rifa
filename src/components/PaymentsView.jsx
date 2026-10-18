@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react'
 import { personKey } from '../db.js'
+import { usePagination } from '../hooks/usePagination.js'
 import { formatDateTime, formatMoney, plural } from '../lib/format.js'
+import { Pagination } from './Pagination.jsx'
 import { ReceiptThumb } from './Receipt.jsx'
+
+const PAGE_SIZE = 10
 
 const FILTERS = [
   { id: 'all', label: 'Todos' },
@@ -29,6 +33,7 @@ export function PaymentsView({ data, onOpenPurchase }) {
       return personKey(p.payer).includes(key)
     })
   }, [purchases, filter, query])
+  const pagination = usePagination(list, PAGE_SIZE, `${filter}|${query.trim()}`)
 
   if (purchases.length === 0) {
     return (
@@ -86,7 +91,7 @@ export function PaymentsView({ data, onOpenPurchase }) {
         <p className="empty">Ningún comprobante coincide.</p>
       ) : (
         <ul className="payments">
-          {list.map((p) => (
+          {pagination.items.map((p) => (
             <li key={p.id}>
               <button type="button" className="payment" onClick={() => onOpenPurchase(p.id)}>
                 <ReceiptThumb receipt={p.receipt} />
@@ -109,6 +114,7 @@ export function PaymentsView({ data, onOpenPurchase }) {
           ))}
         </ul>
       )}
+      <Pagination pagination={pagination} label="Páginas de comprobantes" />
     </section>
   )
 }

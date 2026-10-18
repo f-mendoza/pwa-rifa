@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react'
 import { personKey } from '../db.js'
+import { usePagination } from '../hooks/usePagination.js'
 import { formatMoney, plural } from '../lib/format.js'
 import { ContactLinks } from './ContactLinks.jsx'
+import { Pagination } from './Pagination.jsx'
+
+// 9 llena la grilla de 3 columnas sin dejar huecos
+const PAGE_SIZE = 9
 
 export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
   const [query, setQuery] = useState('')
@@ -19,6 +24,7 @@ export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
         p.numbers.some((n) => String(n) === q),
     )
   }, [data.people, query])
+  const pagination = usePagination(people, PAGE_SIZE, query.trim())
 
   if (data.people.length === 0) {
     return (
@@ -56,7 +62,7 @@ export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
         <p className="empty">Nadie coincide con «{query}».</p>
       ) : (
         <ul className="people">
-          {people.map((p) => (
+          {pagination.items.map((p) => (
             <li key={p.id} className="person">
               <div className="person-head">
                 <div>
@@ -85,6 +91,7 @@ export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
           ))}
         </ul>
       )}
+      <Pagination pagination={pagination} label="Páginas de participantes" />
     </section>
   )
 }

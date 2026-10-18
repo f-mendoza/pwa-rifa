@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Dialog } from '../../src/components/Dialog.jsx'
 import { NumbersView } from '../../src/components/NumbersView.jsx'
+import { ParticipantsView } from '../../src/components/ParticipantsView.jsx'
 import { PersonForm } from '../../src/components/PersonForm.jsx'
 import { StatsBar } from '../../src/components/StatsBar.jsx'
 import { LIMITS, personKey } from '../../src/db.js'
@@ -78,6 +79,34 @@ describe('NumbersView', () => {
     expect(fresh.map((el) => el.textContent)).toEqual(['5', '6'])
     // Escalonados en orden.
     expect(fresh[1].style.getPropertyValue('--i')).toBe('1')
+  })
+})
+
+describe('ParticipantsView', () => {
+  const names = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [i + 1, `Persona ${i + 1}`]))
+  const view = () => <ParticipantsView data={raffle(names)} onOpenTicket={() => {}} onEditPerson={() => {}} />
+  const shown = () => screen.getAllByText(/^Persona \d+$/).map((el) => el.textContent)
+
+  it('pagina de a 9 y vuelve a la primera al buscar', async () => {
+    render(view())
+    expect(shown()).toHaveLength(9)
+    expect(screen.getByText('1–9 de 20')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Página anterior' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+    expect(shown()).toEqual(['Persona 19', 'Persona 20'])
+    expect(screen.getByText('Página 3 de 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Página siguiente' })).toBeDisabled()
+
+    await userEvent.type(screen.getByRole('searchbox'), 'persona 1')
+    expect(shown()).toHaveLength(9)
+    expect(screen.getByText('1–9 de 11')).toBeInTheDocument()
+  })
+
+  it('sin más de una página no muestra la paginación', () => {
+    render(<ParticipantsView data={raffle({ 1: 'Ana', 2: 'Beto' })} onOpenTicket={() => {}} onEditPerson={() => {}} />)
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
   })
 })
 

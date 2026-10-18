@@ -277,6 +277,8 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 16px;
+  /* Que la barra de pestañas fija no tape el inicio al volver arriba al paginar */
+  scroll-margin-top: 76px;
 }
 
 @media (min-width: 760px) {
@@ -296,6 +298,44 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+/* Paginación al pie de los listados */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.pagination svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pagination-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.pagination-status .muted {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+@media (max-width: 379px) {
+  .pagination-word {
+    display: none;
+  }
 }
 
 .hint {
