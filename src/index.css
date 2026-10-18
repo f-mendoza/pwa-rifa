@@ -1,0 +1,111 @@
+:root {
+  /* Paleta tomada del flyer: limón → rosa → lila, fucsia y tinta ciruela en vez de negro */
+  --lemon: #f7f2a6;
+  --blush: #fbc9d6;
+  --lilac: #f4a8ee;
+  --pink: #ee4fbf;
+  --pink-strong: #c81f8c;
+  --pink-deep: #a3166f;
+  --pink-wash: #fde8f5;
+
+  --ink: #2e0f2a;
+  --ink-2: #634560;
+  --ink-3: #9b8197;
+  --paper: #fff9f3;
+  --surface: #ffffff;
+  --line: #f1dfea;
+  --line-strong: #e3c4d7;
+
+  --danger: #b42318;
+  --danger-wash: #fdecea;
+  --success: #17724a;
+
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 22px;
+  --shadow-sm: 0 1px 2px rgb(46 15 42 / 0.06), 0 2px 8px rgb(46 15 42 / 0.04);
+  --shadow-lg: 0 12px 40px rgb(46 15 42 / 0.18), 0 2px 8px rgb(46 15 42 / 0.08);
+
+  --display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  --sans: 'Outfit', system-ui, sans-serif;
+  --serif: 'Instrument Serif', Georgia, serif;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: light;
+  font: 400 16px/1.5 var(--sans);
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: var(--paper);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--pink-strong);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

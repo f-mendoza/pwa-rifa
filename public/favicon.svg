@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f566cb"/>
+      <stop offset="1" stop-color="#c81f8c"/>
+    </linearGradient>
+    <mask id="ticket">
+      <rect width="512" height="512" rx="120" fill="#fff"/>
+      <circle cx="0" cy="256" r="60" fill="#000"/>
+      <circle cx="512" cy="256" r="60" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#ticket)">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <rect x="70" width="22" height="512" fill="#fff" opacity=".12"/>
+    <rect x="112" width="8" height="512" fill="#fff" opacity=".1"/>
+    <rect x="398" width="30" height="512" fill="#fff" opacity=".1"/>
+  </g>
+  <path fill="#fff8d6" transform="translate(156.2 416) scale(.2 -.2)" d="M80 0V1600H466Q690 1600 789.5 1509.5Q889 1419 896 1210Q898 1154 898.5 1112.0Q899 1070 898.5 1028.0Q898 986 896 930Q892 800 852.5 717.0Q813 634 730 590L918 0H600L448 540H380V0ZM380 804H466Q529 804 561.0 833.0Q593 862 596 914Q599 963 600.0 1016.5Q601 1070 600.0 1123.5Q599 1177 596 1226Q593 1279 561.0 1307.5Q529 1336 466 1336H380Z"/>
+</svg>
