@@ -13,6 +13,7 @@ export function NumbersView({ data, selected, onToggle, onOpenTicket }) {
   const [query, setQuery] = useState('')
 
   const counts = { all: config.total, available: available.length, taken: takenCount }
+  const justTaken = useJustTaken(ticketByNumber)
 
   const numbers = useMemo(() => {
     const q = query.trim()
@@ -72,11 +73,13 @@ export function NumbersView({ data, selected, onToggle, onOpenTicket }) {
             const ticket = ticketByNumber.get(n)
             const person = ticket && peopleById.get(ticket.participantId)
             const isSelected = selected.has(n)
+            const stamp = justTaken.get(n)
             return (
               <li key={n}>
                 <button
                   type="button"
-                  className={`cell ${ticket ? 'is-taken' : ''} ${isSelected ? 'is-selected' : ''}`}
+                  className={`cell ${ticket ? 'is-taken' : ''} ${isSelected ? 'is-selected' : ''} ${stamp != null ? 'just-taken' : ''}`}
+                  style={stamp ? { '--i': stamp } : undefined}
                   aria-pressed={ticket ? undefined : isSelected}
                   aria-label={ticket ? `Número ${n}, tomado por ${person?.name ?? 'alguien'}` : `Número ${n}, disponible`}
                   title={person?.name}
@@ -103,4 +106,24 @@ export function NumbersView({ data, selected, onToggle, onOpenTicket }) {
       </ul>
     </section>
   )
+}
+
+/**
+ * Números que pasaron a tomados desde el render anterior, con su orden (para escalonar la
+ * animación). Al montar la vista no hay "recién tomados": entrar a la pestaña no anima nada.
+ */
+function useJustTaken(ticketByNumber) {
+  const [state, setState] = useState(() => ({ source: ticketByNumber, fresh: new Map() }))
+  if (state.source !== ticketByNumber) {
+    const fresh = new Map()
+    let i = 0
+    for (const n of [...ticketByNumber.keys()].sort((a, b) => a - b)) {
+      // Se escalona hasta 8 números; el resto se tacha junto para no pasar de ~400 ms.
+      if (!state.source.has(n)) fresh.set(n, Math.min(i++, 8))
+    }
+    const next = { source: ticketByNumber, fresh }
+    setState(next)
+    return fresh
+  }
+  return state.fresh
 }

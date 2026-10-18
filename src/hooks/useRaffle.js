@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo } from 'react'
-import { DEFAULT_CONFIG, DEFAULT_SHARE, db } from '../db.js'
+import { DEFAULT_CONFIG, DEFAULT_SHARE, db, receiptBlob } from '../db.js'
 import { priceFor } from '../lib/format.js'
 
 /**
@@ -46,7 +46,8 @@ function derive({ config, share, participants, tickets, purchases: purchaseRows,
   const ticketByNumber = new Map(tickets.map((t) => [t.number, t]))
   const numbersByOwner = groupNumbers(tickets, 'participantId')
   const numbersByPurchase = groupNumbers(tickets, 'purchaseId')
-  const receipts = new Map(receiptRows.map((r) => [r.purchaseId, r]))
+  // Donde no se pueden guardar Blobs, el archivo viene como bytes: el resto de la app siempre ve `blob`.
+  const receipts = new Map(receiptRows.map((r) => [r.purchaseId, r.blob ? r : { ...r, blob: receiptBlob(r) }]))
   const names = new Map(participants.map((p) => [p.id, p.name]))
 
   const purchases = purchaseRows

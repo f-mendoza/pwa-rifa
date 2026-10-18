@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { personKey } from '../db.js'
+import { LIMITS, personKey } from '../db.js'
 import { plural } from '../lib/format.js'
 
 /**
@@ -44,6 +44,8 @@ export function PersonForm({ initial, people, excludeId, submitLabel, onSubmit, 
           autoFocus
           data-autofocus
           autoComplete="off"
+          maxLength={LIMITS.name}
+          enterKeyHint="next"
           list={listId}
           placeholder="Ej: Ana Pérez"
         />
@@ -62,11 +64,27 @@ export function PersonForm({ initial, people, excludeId, submitLabel, onSubmit, 
       <div className="field-row">
         <label className="field">
           <span className="field-label">Teléfono</span>
-          <input type="tel" value={form.phone} onChange={set('phone')} inputMode="tel" autoComplete="off" placeholder="221 555 1234" />
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={set('phone')}
+            inputMode="tel"
+            autoComplete="off"
+            maxLength={LIMITS.phone}
+            placeholder="221 555 1234"
+          />
         </label>
         <label className="field">
           <span className="field-label">Correo</span>
-          <input type="email" value={form.email} onChange={set('email')} autoComplete="off" placeholder="ana@mail.com" />
+          <input
+            type="email"
+            value={form.email}
+            onChange={set('email')}
+            autoComplete="off"
+            autoCapitalize="none"
+            maxLength={LIMITS.email}
+            placeholder="ana@mail.com"
+          />
         </label>
       </div>
       {extra}
@@ -76,8 +94,13 @@ export function PersonForm({ initial, people, excludeId, submitLabel, onSubmit, 
             Cancelar
           </button>
         )}
-        <button type="submit" className="btn btn-primary" disabled={busy || externalBusy || !form.name.trim()}>
-          {submitLabel}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={busy || externalBusy || !form.name.trim()}
+          aria-busy={busy || undefined}
+        >
+          {busy ? 'Guardando…' : submitLabel}
         </button>
       </div>
     </form>

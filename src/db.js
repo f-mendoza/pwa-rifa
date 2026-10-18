@@ -10,6 +10,7 @@ import { priceFor } from './lib/format.js'
  *   `participantId` es el dueño del número y `purchaseId` el comprobante con que se pagó.
  * - purchases: una por asignación (el "comprobante"). `amount: null` = usar el monto calculado.
  * - receipts: imagen o PDF del comprobante, aparte para no cargar blobs en cada consulta.
+ *   Normalmente en `blob`; donde IndexedDB no acepta Blobs (Safari en modo privado), en `buffer`.
  * - settings: configuración de la rifa y preferencias de la imagen.
  */
 export const db = new Dexie('rifa')
@@ -71,6 +72,9 @@ export const DEFAULT_CONFIG = {
 
 export const DEFAULT_SHARE = { mode: 'available', format: 'story' }
 
+/** Largos máximos: los mismos que limitan los campos del formulario. */
+export const LIMITS = { name: 80, phone: 30, email: 120 }
+
 export function cleanName(name) {
   return String(name ?? '').trim().replace(/\s+/g, ' ')
 }
@@ -83,13 +87,25 @@ export function personKey(name) {
     .toLowerCase()
 }
 
-function cleanPerson(person) {
+/**
+ * Limpia y valida los datos de una persona. Con `lenient` (al restaurar respaldos de versiones
+ * anteriores, que no tenían límites) recorta en vez de rechazar.
+ */
+function cleanPerson(person, { lenient = false } = {}) {
   const data = {
     name: cleanName(person.name),
     phone: String(person.phone ?? '').trim(),
     email: String(person.email ?? '').trim(),
   }
   if (!data.name) throw new Error('El nombre es obligatorio')
+  if (lenient) {
+    for (const field of Object.keys(LIMITS)) data[field] = data[field].slice(0, LIMITS[field]).trim()
+    return data
+  }
+  if (data.name.length > LIMITS.name) throw new Error(`El nombre puede tener hasta ${LIMITS.name} caracteres`)
+  if (data.phone.length > LIMITS.phone) throw new Error(`El teléfono puede tener hasta ${LIMITS.phone} caracteres`)
+  if (data.email.length > LIMITS.email) throw new Error(`El correo puede tener hasta ${LIMITS.email} caracteres`)
+  if (data.email && !/^[^\s@]+@[^\s@]+$/.test(data.email)) throw new Error('El correo no parece válido')
   return data
 }
 
@@ -107,6 +123,59 @@ async function upsertParticipant(person) {
     return existing.id
   }
   return db.participants.add({ ...data, key, createdAt: Date.now() })
+}
+
+let blobSupport = null
+
+/**
+ * ¿Este navegador puede guardar Blobs en IndexedDB? Safari en modo privado (y WebKit en
+ * contextos efímeros) falla sin dar error útil, pero sí acepta ArrayBuffer. Se prueba una vez
+ * en una base aparte, fuera de cualquier transacción de la app.
+ */
+export function supportsBlobStorage() {
+  blobSupport ??= new Promise((resolve) => {
+    let settled = false
+    let probe = null
+    const done = (ok) => {
+      if (settled) return
+      settled = true
+      probe?.close()
+      resolve(ok)
+    }
+    setTimeout(() => done(false), 3000)
+    try {
+      const request = indexedDB.open('rifa-blob-probe', 1)
+      request.onupgradeneeded = () => request.result.createObjectStore('probe')
+      request.onerror = () => done(false)
+      request.onsuccess = () => {
+        probe = request.result
+        try {
+          const tx = probe.transaction('probe', 'readwrite')
+          tx.objectStore('probe').put(new Blob(['ok'], { type: 'text/plain' }), 1)
+          tx.oncomplete = () => done(true)
+          tx.onerror = tx.onabort = () => done(false)
+        } catch {
+          done(false)
+        }
+      }
+    } catch {
+      done(false)
+    }
+  })
+  return blobSupport
+}
+
+/** Deja un comprobante listo para guardar: si no se pueden guardar Blobs, va como bytes. */
+async function storableReceipt(receipt) {
+  if (!receipt?.blob || (await supportsBlobStorage())) return receipt
+  const { blob, ...rest } = receipt
+  return { ...rest, buffer: await blob.arrayBuffer() }
+}
+
+/** El archivo de un comprobante guardado, esté como Blob o como bytes. */
+export function receiptBlob(receipt) {
+  if (receipt.blob) return receipt.blob
+  return new Blob(receipt.buffer ? [receipt.buffer] : [], { type: receipt.type })
 }
 
 /** Tablas que tocan las escrituras de números/personas/comprobantes. */
@@ -154,8 +223,10 @@ async function purchaseAmount(value, count) {
  * Asigna números a una persona y crea su comprobante.
  * @param {{ amount?: number|null, receipt?: object|null }} payment receipt viene de `prepareReceipt`
  */
-export function assignNumbers(numbers, person, { amount = null, receipt = null } = {}) {
+export async function assignNumbers(numbers, person, { amount = null, receipt = null } = {}) {
   normalizeAmount(amount) // Falla antes de abrir la transacción si el monto es inválido.
+  // Se convierte antes: dentro de una transacción de IndexedDB no se puede esperar otra cosa.
+  receipt = await storableReceipt(receipt)
   return db.transaction('rw', [...SALES(), db.settings], async () => {
     const existing = await db.tickets.bulkGet(numbers)
     const taken = numbers.filter((_, i) => existing[i])
@@ -197,7 +268,7 @@ export function voidPurchase(purchaseId) {
   })
 }
 
-export function setPurchaseAmount(purchaseId, amount) {
+export async function setPurchaseAmount(purchaseId, amount) {
   normalizeAmount(amount)
   return db.transaction('rw', db.purchases, db.tickets, db.settings, async () => {
     if (!(await db.purchases.get(purchaseId))) throw new Error('El comprobante ya no existe')
@@ -206,7 +277,8 @@ export function setPurchaseAmount(purchaseId, amount) {
   })
 }
 
-export function setReceipt(purchaseId, receipt) {
+export async function setReceipt(purchaseId, receipt) {
+  receipt = await storableReceipt(receipt)
   return db.transaction('rw', db.purchases, db.receipts, async () => {
     if (!(await db.purchases.get(purchaseId))) throw new Error('El comprobante ya no existe')
     await db.receipts.put({ ...receipt, purchaseId })
@@ -268,13 +340,16 @@ export function normalizeConfig(raw) {
   if ([price, packSize, packPrice].includes(null)) throw new Error('Los precios tienen que ser números enteros')
   if (!Array.isArray(config.prizes)) throw new Error('Los premios tienen que ser una lista')
   return {
-    title: String(config.title ?? '').trim(),
+    title: String(config.title ?? '').trim().slice(0, 40),
     total,
     price,
     packSize,
     packPrice,
-    prizes: config.prizes.map((p) => String(p ?? '').trim()).filter(Boolean),
-    drawText: String(config.drawText ?? '').trim(),
+    prizes: config.prizes
+      .map((p) => String(p ?? '').trim().slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 20),
+    drawText: String(config.drawText ?? '').trim().slice(0, 140),
   }
 }
 
@@ -302,13 +377,12 @@ export function clearNumbers() {
 const BACKUP_APP = 'rifa'
 const BACKUP_SCHEMA = 2
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(blob)
-  })
+async function blobToDataUrl(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  // De a pedazos: pasar millones de argumentos a fromCharCode desborda la pila.
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return `data:${blob.type || 'application/octet-stream'};base64,${btoa(binary)}`
 }
 
 export async function exportBackup() {
@@ -335,7 +409,10 @@ export async function exportBackup() {
     purchases,
     // Los archivos viajan en base64 dentro del JSON.
     receipts: await Promise.all(
-      receipts.map(async ({ blob, ...meta }) => ({ ...meta, data: await blobToDataUrl(blob) })),
+      receipts.map(async (r) => {
+        const { blob: _blob, buffer: _buffer, ...meta } = r
+        return { ...meta, data: await blobToDataUrl(receiptBlob(r)) }
+      }),
     ),
     settings,
   }
@@ -351,7 +428,7 @@ async function parseBackup(data) {
 
   const participants = data.participants.map((p) => {
     if (!Number.isInteger(p?.id) || !cleanName(p.name)) fail('persona sin id o sin nombre')
-    const person = cleanPerson(p)
+    const person = cleanPerson(p, { lenient: true })
     return { ...person, id: p.id, key: personKey(person.name), createdAt: Number(p.createdAt) || Date.now() }
   })
   const keys = new Set(participants.map((p) => p.key))
@@ -413,6 +490,8 @@ async function parseBackup(data) {
       thumb: typeof r.thumb === 'string' && r.thumb.startsWith('data:image/') ? r.thumb : null,
     })
   }
+
+  for (let i = 0; i < receipts.length; i++) receipts[i] = await storableReceipt(receipts[i])
 
   const settings = data.settings.filter((s) => s && (s.key === 'config' || s.key === 'share'))
   const configRow = settings.find((s) => s.key === 'config')

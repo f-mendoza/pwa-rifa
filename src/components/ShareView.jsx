@@ -72,9 +72,13 @@ export function ShareView({ data, image, onShare, onDownload, onCopyImage, onCop
         )}
       </div>
 
-      <figure className="preview" style={{ aspectRatio: `${width} / ${height}` }}>
+      <figure
+        className={`preview ${image.url && !ready ? 'is-stale' : ''}`}
+        style={{ aspectRatio: `${width} / ${height}` }}
+        aria-busy={!ready}
+      >
         {image.url ? (
-          <img src={image.url} alt={`Vista previa: ${available.length} números disponibles`} />
+          <img key={image.url} src={image.url} alt={`Vista previa: ${available.length} números disponibles`} />
         ) : (
           <div className="preview-loading">Generando…</div>
         )}

@@ -15,7 +15,18 @@
 
 .main {
   padding: 16px var(--gutter) 0;
-  transition: padding-bottom 0.3s var(--ease);
+}
+
+/* Al cambiar de pestaña el contenido entra con un fundido corto: confirma el cambio sin hacer esperar */
+.view {
+  animation: view-in var(--dur) var(--ease) both;
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 .main.has-selection {
@@ -56,9 +67,16 @@
 
 .logo {
   font: 900 clamp(64px, 16vw, 112px) / 0.82 var(--display);
-  color: var(--pink);
+  /* pink-strong: el fucsia claro del flyer no llega a 3:1 sobre el degradé */
+  color: var(--pink-strong);
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
+}
+
+/* Títulos largos (hasta 40 caracteres) no tienen que ocupar media pantalla */
+.logo.is-long {
+  font-size: clamp(44px, 9vw, 76px);
+  line-height: 0.88;
 }
 
 .brand-sub {
@@ -82,8 +100,8 @@
   margin: 12px var(--gutter) 0;
   padding: 10px 14px;
   border-radius: var(--radius);
-  background: #fbf7cf;
-  border: 1px solid #ece49a;
+  background: var(--note-wash);
+  border: 1px solid var(--note-line);
   font-size: 14px;
   color: var(--ink-2);
 }
@@ -122,15 +140,32 @@
 }
 
 .stat dd {
+  overflow: hidden;
   margin: 2px 0 0;
   font: 800 40px/1 var(--display);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
+/* Cuando un total cambia, el número nuevo sube a su lugar: se nota qué se movió */
+.tick {
+  display: inline-block;
+}
+
+.tick.is-changed {
+  animation: tick-in var(--dur-slow) var(--ease-out-expo);
+}
+
+@keyframes tick-in {
+  from {
+    opacity: 0;
+    transform: translateY(45%);
+  }
+}
+
 .stat-hero {
   background: var(--pink-wash);
-  border-color: #f7c6e6;
+  border-color: var(--pink-line);
 }
 
 .stat-hero dd {
@@ -162,7 +197,8 @@
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--pink), var(--pink-strong));
-  transition: width 0.5s var(--ease);
+  transform-origin: left;
+  transition: transform 0.6s var(--ease-out-expo);
 }
 
 .progress-label {
@@ -183,6 +219,7 @@
   margin-top: 12px;
   padding: 8px var(--gutter);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   background: rgb(255 249 243 / 0.88);
   backdrop-filter: blur(10px);
@@ -203,9 +240,11 @@
     color 0.15s;
 }
 
-.tab:hover {
-  background: var(--pink-wash);
-  color: var(--ink);
+@media (hover: hover) {
+  .tab:hover {
+    background: var(--pink-wash);
+    color: var(--ink);
+  }
 }
 
 .tab[aria-current='page'] {
@@ -213,13 +252,22 @@
   font-weight: 600;
 }
 
-.tab[aria-current='page']::after {
-  content: '';
+/* Un solo indicador que se desliza hasta la pestaña activa */
+.tab-indicator {
   position: absolute;
-  inset: auto 14px -9px;
+  left: 0;
+  bottom: 0;
+  width: 1px;
   height: 3px;
   border-radius: 3px 3px 0 0;
   background: var(--pink-strong);
+  transform-origin: left;
+  pointer-events: none;
+  transition: transform var(--dur-slow) var(--ease-out-expo);
+}
+
+.tab-indicator.no-anim {
+  transition: none;
 }
 
 /* ---------- Paneles y piezas comunes ---------- */
@@ -288,7 +336,7 @@
   padding: 4px;
   gap: 2px;
   border-radius: 12px;
-  background: #f7eef3;
+  background: var(--wash);
   max-width: 100%;
   overflow-x: auto;
 }
@@ -379,6 +427,7 @@
 }
 
 .cell {
+  position: relative;
   display: grid;
   place-items: center;
   width: 100%;
@@ -404,8 +453,10 @@
   }
 }
 
-.cell:hover {
-  border-color: var(--pink);
+@media (hover: hover) {
+  .cell:hover {
+    border-color: var(--pink);
+  }
 }
 
 .cell:active {
@@ -417,21 +468,67 @@
   border-color: transparent;
   color: var(--ink-3);
   font-weight: 500;
-  background:
-    linear-gradient(to top right, transparent calc(50% - 0.75px), rgb(46 15 42 / 0.22) 50%, transparent calc(50% + 0.75px)),
-    linear-gradient(to top left, transparent calc(50% - 0.75px), rgb(46 15 42 / 0.22) 50%, transparent calc(50% + 0.75px)),
-    #f5ecf1;
+  background: var(--taken);
 }
 
-.cell.is-taken:hover {
-  border-color: var(--line-strong);
+.cell.is-taken::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(to top right, transparent calc(50% - 0.75px), rgb(46 15 42 / 0.28) 50%, transparent calc(50% + 0.75px)),
+    linear-gradient(to top left, transparent calc(50% - 0.75px), rgb(46 15 42 / 0.28) 50%, transparent calc(50% + 0.75px));
+}
+
+/* Recién vendido: la X se traza de izquierda a derecha, un número tras otro */
+.cell.just-taken {
+  animation: cell-stamp var(--dur-slow) var(--ease-out-expo) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+.cell.just-taken::after {
+  animation: cross-out 420ms var(--ease-out-expo) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 60ms);
+}
+
+@keyframes cell-stamp {
+  from {
+    background: var(--pink-strong);
+    color: var(--on-accent);
+    transform: scale(0.9);
+  }
+}
+
+@keyframes cross-out {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@media (hover: hover) {
+  .cell.is-taken:hover {
+    border-color: var(--line-strong);
+  }
 }
 
 .cell.is-selected {
   border-color: var(--pink-strong);
   background: var(--pink-strong);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: 0 4px 12px rgb(200 31 140 / 0.35);
+  animation: cell-pick var(--dur) var(--ease-out-expo);
+}
+
+@keyframes cell-pick {
+  from {
+    transform: scale(0.86);
+    box-shadow: 0 0 0 rgb(200 31 140 / 0);
+  }
 }
 
 .legend {
@@ -469,7 +566,7 @@
   background:
     linear-gradient(to top right, transparent calc(50% - 0.75px), rgb(46 15 42 / 0.3) 50%, transparent calc(50% + 0.75px)),
     linear-gradient(to top left, transparent calc(50% - 0.75px), rgb(46 15 42 / 0.3) 50%, transparent calc(50% + 0.75px)),
-    #f5ecf1;
+    var(--taken);
 }
 
 /* ---------- Barra de selección ---------- */
@@ -486,7 +583,7 @@
   padding: 10px;
   border-radius: 18px;
   background: var(--ink);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: var(--shadow-lg);
   transform: translate(-50%, calc(100% + 40px));
   transition: transform 0.35s var(--ease);
@@ -521,9 +618,11 @@
   color: rgb(255 255 255 / 0.8);
 }
 
-.selection-bar .icon-btn:hover {
-  background: rgb(255 255 255 / 0.1);
-  color: #fff;
+@media (hover: hover) {
+  .selection-bar .icon-btn:hover {
+    background: rgb(255 255 255 / 0.1);
+    color: var(--on-accent);
+  }
 }
 
 .selection-bar .btn-primary {
@@ -531,8 +630,10 @@
   color: var(--ink);
 }
 
-.selection-bar .btn-primary:hover {
-  background: #f472cc;
+@media (hover: hover) {
+  .selection-bar .btn-primary:hover {
+    background: var(--pink-hover);
+  }
 }
 
 /* ---------- Botones ---------- */
@@ -565,11 +666,13 @@
 
 .btn-primary {
   background: var(--pink-strong);
-  color: #fff;
+  color: var(--on-accent);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: var(--pink-deep);
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: var(--pink-deep);
+  }
 }
 
 .btn-secondary {
@@ -577,8 +680,10 @@
   color: var(--pink-deep);
 }
 
-.btn-secondary:hover:not(:disabled) {
-  background: #fbd6ee;
+@media (hover: hover) {
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--pink-wash-2);
+  }
 }
 
 .btn-ghost {
@@ -587,17 +692,21 @@
   color: var(--ink);
 }
 
-.btn-ghost:hover:not(:disabled) {
-  background: #faf1f6;
+@media (hover: hover) {
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--wash-hover);
+  }
 }
 
 .btn-danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 
-.btn-danger:hover {
-  background: #8f1c13;
+@media (hover: hover) {
+  .btn-danger:hover {
+    background: var(--danger-hover);
+  }
 }
 
 .danger-text {
@@ -632,9 +741,11 @@
   color: var(--ink-2);
 }
 
-.icon-btn:hover {
-  background: #f7eef3;
-  color: var(--ink);
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--wash);
+    color: var(--ink);
+  }
 }
 
 .link-btn {
@@ -736,7 +847,7 @@
   color: var(--ink-2);
   padding: 10px 14px;
   border-radius: 12px;
-  background: #faf4f7;
+  background: var(--wash-2);
 }
 
 .form-actions {
@@ -760,6 +871,7 @@
   width: 100%;
   max-width: 560px;
   max-height: 92svh;
+  overscroll-behavior: contain;
   margin: auto auto 0;
   padding: 0;
   border: 0;
@@ -775,7 +887,35 @@
 
 .sheet::backdrop {
   background: rgb(46 15 42 / 0.42);
-  backdrop-filter: blur(2px);
+  animation: backdrop-in var(--dur) var(--ease);
+}
+
+/* Salida: más corta que la entrada y acelerando, así no se siente que tarda en irse */
+.sheet.is-closing {
+  animation: sheet-down 200ms var(--ease-in) forwards;
+}
+
+.sheet.is-closing::backdrop {
+  animation: backdrop-out 200ms var(--ease-in) forwards;
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-down {
+  to {
+    transform: translateY(32px);
+    opacity: 0;
+  }
 }
 
 @media (min-width: 640px) {
@@ -786,6 +926,17 @@
 
   .sheet[open] {
     animation-name: sheet-pop;
+  }
+
+  .sheet.is-closing {
+    animation-name: sheet-shrink;
+  }
+}
+
+@keyframes sheet-shrink {
+  to {
+    transform: translateY(8px) scale(0.98);
+    opacity: 0;
   }
 }
 
@@ -836,7 +987,7 @@
   min-width: 42px;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid #f7c6e6;
+  border: 1px solid var(--pink-line);
   border-radius: 9px;
   background: var(--pink-wash);
   font-size: 14px;
@@ -845,8 +996,10 @@
   color: var(--pink-deep);
 }
 
-button.chip:hover {
-  border-color: var(--pink-strong);
+@media (hover: hover) {
+  button.chip:hover {
+    border-color: var(--pink-strong);
+  }
 }
 
 .chips-block {
@@ -874,9 +1027,11 @@ button.chip:hover {
   overflow-wrap: anywhere;
 }
 
-.contact a:hover {
-  color: var(--pink-strong);
-  text-decoration: underline;
+@media (hover: hover) {
+  .contact a:hover {
+    color: var(--pink-strong);
+    text-decoration: underline;
+  }
 }
 
 .contact svg {
@@ -916,6 +1071,20 @@ button.chip:hover {
   font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
+}
+
+/* Avisos que aparecen en el lugar (confirmaciones, coincidencias, archivo elegido) */
+.confirm,
+.field-hint.is-match,
+.receipt-chosen {
+  animation: reveal var(--dur) var(--ease-out-expo);
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .confirm {
@@ -1073,6 +1242,22 @@ button.chip:hover {
   display: block;
   width: 100%;
   height: 100%;
+  animation: preview-in var(--dur-slow) var(--ease);
+  transition:
+    opacity var(--dur) var(--ease),
+    filter var(--dur) var(--ease);
+}
+
+/* Mientras se regenera, la imagen vieja se apaga: no es la que se va a compartir */
+.preview.is-stale img {
+  opacity: 0.55;
+  filter: saturate(0.6);
+}
+
+@keyframes preview-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .preview-loading {
@@ -1138,7 +1323,7 @@ button.chip:hover {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #e0a33a;
+  background: var(--warn);
 }
 
 .dot.ok {
@@ -1165,22 +1350,42 @@ button.chip:hover {
 }
 
 .toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 12px 18px;
   border-radius: 14px;
   background: var(--ink);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 500;
   box-shadow: var(--shadow-lg);
   animation: toast-in 0.3s var(--ease);
 }
 
-.toast.is-success {
-  border-left: 4px solid var(--pink);
+.toast svg {
+  width: 18px;
+  height: 18px;
+  color: var(--pink);
+}
+
+.toast.is-leaving {
+  animation: toast-out 160ms var(--ease-in) forwards;
+}
+
+@keyframes toast-out {
+  to {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
 }
 
 .toast.is-error {
   background: var(--danger);
+}
+
+.toast.is-error svg {
+  color: var(--on-accent);
 }
 
 @keyframes toast-in {
@@ -1198,6 +1403,27 @@ button.chip:hover {
 
 .loading .logo {
   animation: pulse 1.2s ease-in-out infinite alternate;
+}
+
+.fatal {
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  min-height: 100svh;
+  padding: 24px;
+  max-width: 440px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.fatal .empty-title {
+  margin: 0;
+}
+
+.fatal code {
+  font-size: 12px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
 }
 
 @keyframes pulse {
@@ -1272,13 +1498,11 @@ button.chip:hover {
 
   .tab {
     flex: 1 0 auto;
+    min-height: 44px;
     padding: 10px 8px;
     font-size: 15px;
   }
 
-  .tab[aria-current='page']::after {
-    inset-inline: 8px;
-  }
 
   .main {
     padding-inline: 8px;
@@ -1293,15 +1517,52 @@ button.chip:hover {
     width: 100%;
   }
 
+  /* Filtros: en pantallas angostas el texto pasa a dos líneas en vez de scrollear de costado */
+  .segmented {
+    overflow: visible;
+  }
+
   .segmented-item {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
     justify-content: center;
-    padding: 7px 6px;
+    flex-wrap: wrap;
+    gap: 0 4px;
+    padding: 6px 4px;
     font-size: 13px;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
   }
 
   .search {
     max-width: none;
+  }
+
+  .search input {
+    height: 44px;
+  }
+
+  .selection-bar .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Celulares chicos (320–370px): las cinco pestañas tienen que entrar sin scroll lateral */
+@media (max-width: 370px) {
+  .tabs {
+    padding-inline: 4px;
+  }
+
+  .tab {
+    padding-inline: 5px;
+    font-size: 14px;
+  }
+
+  .logo {
+    font-size: 56px;
   }
 }
 
@@ -1321,7 +1582,7 @@ button.chip:hover {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fffafc;
+  background: var(--surface-2);
   min-width: 0;
 }
 
@@ -1372,9 +1633,11 @@ button.chip:hover {
     background 0.15s;
 }
 
-.receipt-drop:hover {
-  border-color: var(--pink-strong);
-  background: var(--pink-wash);
+@media (hover: hover) {
+  .receipt-drop:hover {
+    border-color: var(--pink-strong);
+    background: var(--pink-wash);
+  }
 }
 
 .receipt-drop svg {
@@ -1437,7 +1700,7 @@ input:focus-visible + .btn {
   flex-shrink: 0;
   border-radius: 10px;
   object-fit: cover;
-  background: #f7eef3;
+  background: var(--wash);
   color: var(--ink-3);
 }
 
@@ -1458,9 +1721,9 @@ input:focus-visible + .btn {
 }
 
 .thumb.is-empty {
-  border: 1.5px dashed #e6cf6a;
-  background: #fffbea;
-  color: #9a7a10;
+  border: 1.5px dashed var(--empty-line);
+  background: var(--empty-wash);
+  color: var(--empty-ink);
 }
 
 .thumb.is-file {
@@ -1533,7 +1796,7 @@ input:focus-visible + .btn {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
-  background: #f7eef3;
+  background: var(--wash);
   cursor: zoom-in;
 }
 
@@ -1573,8 +1836,8 @@ input:focus-visible + .btn {
 }
 
 .badge.warn {
-  background: #fbf3c9;
-  color: #7a5a00;
+  background: var(--warn-wash);
+  color: var(--warn-ink);
 }
 
 /* Enlace del número a su comprobante */
@@ -1586,12 +1849,14 @@ input:focus-visible + .btn {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fffafc;
+  background: var(--surface-2);
   text-align: left;
 }
 
-.purchase-link:hover {
-  border-color: var(--pink);
+@media (hover: hover) {
+  .purchase-link:hover {
+    border-color: var(--pink);
+  }
 }
 
 .purchase-link > span {
@@ -1647,8 +1912,10 @@ input:focus-visible + .btn {
   transition: border-color 0.15s;
 }
 
-.payment:hover {
-  border-color: var(--pink);
+@media (hover: hover) {
+  .payment:hover {
+    border-color: var(--pink);
+  }
 }
 
 .payment-main {
@@ -1707,6 +1974,6 @@ input:focus-visible + .btn {
   font-weight: 600;
   padding: 1px 7px;
   border-radius: 99px;
-  background: #fbf3c9;
-  color: #7a5a00;
+  background: var(--warn-wash);
+  color: var(--warn-ink);
 }

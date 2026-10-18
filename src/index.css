@@ -7,18 +7,37 @@
   --pink-strong: #c81f8c;
   --pink-deep: #a3166f;
   --pink-wash: #fde8f5;
+  --pink-wash-2: #fbd6ee;
+  --pink-line: #f7c6e6;
+  --pink-hover: #f472cc;
 
   --ink: #2e0f2a;
   --ink-2: #634560;
-  --ink-3: #9b8197;
+  /* ink-3 sigue siendo el gris más suave, pero con contraste AA sobre blanco y lavados */
+  --ink-3: #7a6077;
   --paper: #fff9f3;
-  --surface: #ffffff;
+  --surface: #fffdfe;
+  --surface-2: #fffafc;
+  --wash: #f7eef3;
+  --wash-2: #faf4f7;
+  --wash-hover: #faf1f6;
+  --taken: #f5ecf1;
+  --on-accent: #fffafd;
   --line: #f1dfea;
   --line-strong: #e3c4d7;
 
   --danger: #b42318;
   --danger-wash: #fdecea;
+  --danger-hover: #8f1c13;
   --success: #17724a;
+  --warn: #e0a33a;
+  --warn-ink: #7a5a00;
+  --warn-wash: #fbf3c9;
+  --note-wash: #fbf7cf;
+  --note-line: #ece49a;
+  --empty-wash: #fffbea;
+  --empty-line: #e6cf6a;
+  --empty-ink: #8a6c0a;
 
   --radius-sm: 10px;
   --radius: 14px;
@@ -30,7 +49,13 @@
   --sans: 'Outfit', system-ui, sans-serif;
   --serif: 'Instrument Serif', Georgia, serif;
 
+  /* Movimiento: salidas exponenciales, nada de rebote. Las salidas duran ~75% de la entrada. */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 320ms;
 
   color-scheme: light;
   font: 400 16px/1.5 var(--sans);
@@ -53,6 +78,11 @@ body {
   background: var(--paper);
 }
 
+/* Con una hoja abierta, el fondo no scrollea por detrás (iOS encadena el scroll si no) */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
 h1,
 h2,
 p {
@@ -69,6 +99,21 @@ select {
 
 button {
   cursor: pointer;
+}
+
+/* Sin zoom por doble toque al elegir números rápido, ni menú de copiar al mantener apretado */
+button,
+label,
+a,
+input,
+textarea {
+  touch-action: manipulation;
+}
+
+button {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 button:disabled {
@@ -106,6 +151,7 @@ svg {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

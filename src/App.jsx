@@ -11,6 +11,7 @@ import { SelectionBar } from './components/SelectionBar.jsx'
 import { SettingsView } from './components/SettingsView.jsx'
 import { ShareView } from './components/ShareView.jsx'
 import { StatsBar } from './components/StatsBar.jsx'
+import { Tabs } from './components/Tabs.jsx'
 import { TicketDialog } from './components/TicketDialog.jsx'
 import {
   assignNumbers,
@@ -29,6 +30,7 @@ import {
 import { requestPersistence, useInstallPrompt, useOnline } from './hooks/usePwa.js'
 import { useRaffle } from './hooks/useRaffle.js'
 import { useShareImage } from './hooks/useShareImage.js'
+import { friendlyError } from './lib/errors.js'
 import { availableMessage, plural, todayStamp } from './lib/format.js'
 import { copyImage, copyText, downloadBlob, shareImageFile } from './lib/share.js'
 import './App.css'
@@ -55,12 +57,28 @@ export default function App() {
   const [editingPersonId, setEditingPersonId] = useState(null)
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
+  const tabsAnchor = useRef(null)
 
   const notify = useCallback((message, tone = 'info') => {
     clearTimeout(toastTimer.current)
-    setToast({ message, tone, id: Date.now() })
-    toastTimer.current = setTimeout(() => setToast(null), 3800)
+    // Los errores quedan más tiempo: suelen pedir que la persona haga algo.
+    const duration = tone === 'error' ? 6000 : 3800
+    setToast({ message, tone, id: Date.now(), leaving: false })
+    toastTimer.current = setTimeout(() => {
+      setToast((t) => t && { ...t, leaving: true })
+      toastTimer.current = setTimeout(() => setToast(null), 180)
+    }, duration)
   }, [])
+
+  function changeTab(id) {
+    setTab(id)
+    // Si se venía scrolleado (p. ej. al final de la grilla), la sección nueva arranca arriba de todo.
+    const anchor = tabsAnchor.current
+    if (!anchor) return
+    // + el margen de la barra de pestañas, para que quede pegada arriba sin asomar el resumen.
+    const top = anchor.getBoundingClientRect().top + parseFloat(getComputedStyle(anchor.nextElementSibling).marginTop)
+    if (top < 0) window.scrollTo({ top: window.scrollY + top })
+  }
 
   const {
     needRefresh: [needRefresh],
@@ -77,7 +95,7 @@ export default function App() {
         if (success) notify(typeof success === 'function' ? success(result) : success, 'success')
         return true
       } catch (err) {
-        notify(err.message || 'Algo salió mal', 'error')
+        notify(friendlyError(err), 'error')
         return false
       }
     },
@@ -110,17 +128,18 @@ export default function App() {
       const result = await shareImageFile(image.blob, fileName, availableMessage(data.config, data.available))
       if (result === 'downloaded') notify('Imagen descargada', 'success')
     } catch (err) {
-      notify(`No se pudo compartir: ${err.message}`, 'error')
+      notify(friendlyError(err, 'No se pudo compartir. Probá con "Descargar PNG".'), 'error')
     }
   }
 
   const editingPerson = editingPersonId != null ? data.peopleById.get(editingPersonId) : null
+  const title = (data.config.title || 'Rifa').toUpperCase()
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <h1 className="logo">{(data.config.title || 'Rifa').toUpperCase()}</h1>
+          <h1 className={`logo ${title.length > 12 ? 'is-long' : ''}`}>{title}</h1>
           {data.config.drawText && <p className="brand-sub">{data.config.drawText}</p>}
         </div>
         <div className="topbar-actions">
@@ -148,28 +167,18 @@ export default function App() {
               </button>
             </>
           ) : (
-            'Sin conexión — todo sigue funcionando y se guarda en este dispositivo.'
+            'Sin conexión: todo sigue funcionando y se guarda en este dispositivo.'
           )}
         </div>
       )}
 
       <StatsBar data={data} />
 
-      <nav className="tabs" aria-label="Secciones">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className="tab"
-            aria-current={tab === t.id ? 'page' : undefined}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <div ref={tabsAnchor} />
+      <Tabs tabs={TABS} current={tab} onChange={changeTab} />
 
       <main className={`main ${selected.size ? 'has-selection' : ''}`}>
+        <div key={tab} className="view">
         {tab === 'numbers' && (
           <NumbersView data={data} selected={selected} onToggle={toggle} onOpenTicket={setTicketNumber} />
         )}
@@ -219,6 +228,7 @@ export default function App() {
             onClear={() => run(clearNumbers, 'Rifa reiniciada')}
           />
         )}
+        </div>
       </main>
 
       {tab === 'numbers' && (
@@ -301,8 +311,23 @@ export default function App() {
 
       <div className="toast-region" aria-live="polite">
         {toast && (
-          <div key={toast.id} className={`toast is-${toast.tone}`} role={toast.tone === 'error' ? 'alert' : undefined}>
-            {toast.message}
+          <div
+            key={toast.id}
+            className={`toast is-${toast.tone} ${toast.leaving ? 'is-leaving' : ''}`}
+            role={toast.tone === 'error' ? 'alert' : undefined}
+          >
+            {toast.tone === 'success' && (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12.5l4.5 4.5L19 7.5" />
+              </svg>
+            )}
+            {toast.tone === 'error' && (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 8v5M12 16.5v.5" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            )}
+            <span>{toast.message}</span>
           </div>
         )}
       </div>

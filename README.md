@@ -37,7 +37,14 @@ npm run dev       # servidor de desarrollo
 npm run build     # build de producción con service worker (en dist/)
 npm run preview   # sirve el build, para probar el modo offline y la instalación
 npm run lint      # oxlint
+npm test          # tests unitarios (Vitest)
+npm run test:e2e  # tests E2E en celular (Playwright)
 ```
+
+### Tests
+
+- **Unitarios** (`tests/unit/`, [Vitest](https://vitest.dev)): precios y textos, mensajes de error, compartir/copiar, la base de datos completa (asignar, liberar, pasar, unificar personas, montos, configuración, respaldo y restauración) sobre un IndexedDB en memoria (`fake-indexeddb`), y componentes con Testing Library. `npm run test:coverage` genera la cobertura.
+- **E2E** (`tests/e2e/`, [Playwright](https://playwright.dev)): los flujos reales en dos teléfonos emulados, Android (Chromium, Pixel 7) e iPhone (WebKit, iPhone 13): vender números, ver y liberar un número, pasarlo, comprobantes con foto, corrección de montos, anular ventas, ajustes, respaldo, imagen para compartir, modo sin conexión, "reducir movimiento", contraste y que no haya scroll lateral a 320, 375 y 414 px. Levantan su propio servidor en el puerto 5199. La primera vez hay que bajar los navegadores con `npx playwright install chromium webkit`.
 
 Stack: React 19, Vite, Dexie, vite-plugin-pwa. Fuentes empaquetadas con Fontsource (Big Shoulders Display, Outfit e Instrument Serif), así la imagen se dibuja igual sin internet.
 
@@ -53,7 +60,8 @@ Stack: React 19, Vite, Dexie, vite-plugin-pwa. Fuentes empaquetadas con Fontsour
 | `src/lib/receipt.js` | Compresión y miniatura de los comprobantes. |
 | `src/lib/format.js` | Precios con promo, montos y textos. |
 | `src/lib/share.js` | Compartir, descargar y copiar al portapapeles. |
-| `src/components/` | Vistas (Números, Personas, Pagos, Imagen, Ajustes) y diálogos. |
+| `src/lib/errors.js` | Traduce errores del navegador o de IndexedDB a mensajes claros en castellano. |
+| `src/components/` | Vistas (Números, Personas, Pagos, Imagen, Ajustes), diálogos, pestañas y la pantalla de error (`ErrorBoundary`). |
 
 ## Datos y privacidad
 

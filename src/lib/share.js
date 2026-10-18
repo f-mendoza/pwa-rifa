@@ -6,12 +6,13 @@ export function downloadBlob(blob, filename) {
   document.body.append(a)
   a.click()
   a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  // iOS tarda en empezar la descarga: liberar la URL muy rápido la cancela.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
 /**
  * Abre el menú nativo de compartir (WhatsApp, Instagram, etc.) con la imagen.
- * Si el navegador no puede compartir archivos, la descarga.
+ * Si el navegador no puede compartir archivos, o no lo permite en este momento, la descarga.
  * @returns {Promise<'shared'|'downloaded'|'cancelled'>}
  */
 export async function shareImageFile(blob, filename, text) {
@@ -22,7 +23,9 @@ export async function shareImageFile(blob, filename, text) {
       return 'shared'
     } catch (err) {
       if (err.name === 'AbortError') return 'cancelled'
-      throw err
+      // NotAllowedError: se perdió el gesto del usuario o hay otro share abierto. Mejor descargar
+      // que dejar a la persona sin imagen.
+      if (err.name !== 'NotAllowedError') throw err
     }
   }
   downloadBlob(blob, filename)
@@ -34,9 +37,32 @@ export function canCopyImage() {
 }
 
 export async function copyImage(blob) {
-  await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+  if (!canCopyImage()) throw new Error('Este navegador no permite copiar imágenes')
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+  } catch {
+    throw new Error('No se pudo copiar la imagen. Probá con "Descargar PNG".')
+  }
 }
 
+/** Copia texto; si no hay API de portapapeles (http, navegadores viejos) usa el método clásico. */
 export async function copyText(text) {
-  await navigator.clipboard.writeText(text)
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // Sin permiso: se intenta el método clásico.
+    }
+  }
+  const area = document.createElement('textarea')
+  area.value = text
+  area.setAttribute('readonly', '')
+  area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px'
+  document.body.append(area)
+  area.select()
+  area.setSelectionRange(0, text.length)
+  const ok = document.execCommand?.('copy')
+  area.remove()
+  if (!ok) throw new Error('No se pudo copiar la lista en este navegador.')
 }

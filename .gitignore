@@ -25,3 +25,9 @@ dist-ssr
 
 # Configuración local de Claude Code
 .claude/
+
+# Tests
+playwright-report
+test-results
+blob-report
+coverage

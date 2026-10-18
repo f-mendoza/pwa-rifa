@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { MAX_TOTAL } from '../db.js'
 import { requestPersistence } from '../hooks/usePwa.js'
 
+// Un campo vacío queda vacío mientras se escribe (si no, borrar "300" dejaba un 0 pegado).
 const toInt = (value) => {
+  if (value === '') return ''
   const n = Number.parseInt(value, 10)
-  return Number.isFinite(n) ? n : 0
+  return Number.isFinite(n) ? n : ''
 }
 
 export function SettingsView({ data, onSaveConfig, onExport, onImport, onClear }) {
@@ -29,6 +31,9 @@ function ConfigForm({ config, onSave }) {
     e.preventDefault()
     onSave({
       ...form,
+      price: form.price === '' ? 0 : form.price,
+      packSize: form.packSize === '' ? 0 : form.packSize,
+      packPrice: form.packPrice === '' ? 0 : form.packPrice,
       title: form.title.trim(),
       drawText: form.drawText.trim(),
       prizes: form.prizes.map((p) => p.trim()).filter(Boolean),
@@ -52,6 +57,7 @@ function ConfigForm({ config, onSave }) {
             type="number"
             min={1}
             max={MAX_TOTAL}
+            inputMode="numeric"
             value={form.total}
             onChange={set('total', toInt)}
             required
@@ -62,15 +68,29 @@ function ConfigForm({ config, onSave }) {
       <div className="field-row three">
         <label className="field">
           <span className="field-label">Precio por número</span>
-          <input type="number" min={0} step={100} value={form.price} onChange={set('price', toInt)} />
+          <input type="number" min={0} step={1} inputMode="numeric" value={form.price} onChange={set('price', toInt)} />
         </label>
         <label className="field">
           <span className="field-label">Promo: cantidad</span>
-          <input type="number" min={0} max={10} value={form.packSize} onChange={set('packSize', toInt)} />
+          <input
+            type="number"
+            min={0}
+            max={10}
+            inputMode="numeric"
+            value={form.packSize}
+            onChange={set('packSize', toInt)}
+          />
         </label>
         <label className="field">
           <span className="field-label">Promo: precio</span>
-          <input type="number" min={0} step={100} value={form.packPrice} onChange={set('packPrice', toInt)} />
+          <input
+            type="number"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            value={form.packPrice}
+            onChange={set('packPrice', toInt)}
+          />
         </label>
       </div>
       <p className="field-hint">Para no usar promo, dejá la cantidad o el precio en 0.</p>
@@ -97,7 +117,7 @@ function ConfigForm({ config, onSave }) {
             </li>
           ))}
         </ol>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={addPrize}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={addPrize} disabled={form.prizes.length >= 20}>
           + Agregar premio
         </button>
       </fieldset>
@@ -124,6 +144,8 @@ function ConfigForm({ config, onSave }) {
 function DataPanel({ data, onExport, onImport, onClear }) {
   const fileRef = useRef(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [pendingImport, setPendingImport] = useState(null)
+  const hasData = data.takenCount > 0 || data.purchases.length > 0
   const [persisted, setPersisted] = useState(null)
 
   useEffect(() => {
@@ -167,10 +189,39 @@ function DataPanel({ data, onExport, onImport, onClear }) {
           onChange={(e) => {
             const file = e.target.files[0]
             e.target.value = ''
-            if (file) onImport(file)
+            if (!file) return
+            // Con datos cargados, restaurar los reemplaza todos: se confirma antes.
+            if (hasData) setPendingImport(file)
+            else onImport(file)
           }}
         />
       </div>
+
+      {pendingImport && (
+        <div className="confirm" role="alert">
+          <p>
+            Restaurar <strong>{pendingImport.name}</strong> reemplaza todo lo que hay ahora en este teléfono (
+            {data.takenCount} números tomados, {data.purchases.length} comprobantes). Si no tenés un respaldo de lo
+            actual, descargalo antes.
+          </p>
+          <div className="form-actions wrap">
+            <button type="button" className="btn btn-ghost" onClick={() => setPendingImport(null)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={async () => {
+                const file = pendingImport
+                setPendingImport(null)
+                await onImport(file)
+              }}
+            >
+              Sí, restaurar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="danger-zone">
         {confirmClear ? (
