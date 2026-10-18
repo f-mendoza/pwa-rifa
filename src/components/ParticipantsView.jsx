@@ -13,6 +13,7 @@ export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
     return data.people.filter(
       (p) =>
         p.key.includes(key) ||
+        (p.referrer && personKey(p.referrer).includes(key)) ||
         p.phone?.includes(q) ||
         p.email?.toLowerCase().includes(q.toLowerCase()) ||
         p.numbers.some((n) => String(n) === q),
@@ -46,7 +47,7 @@ export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nombre, teléfono o número"
+            placeholder="Nombre, referido o número"
           />
         </label>
       </div>
@@ -63,6 +64,7 @@ export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
                   <p className="muted">
                     {plural(p.numbers.length, 'número', 'números')}
                     {p.amount > 0 && ` · pagó ${formatMoney(p.amount)}`}
+                    {p.referrer && ` · referido por ${p.referrer}`}
                   </p>
                 </div>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => onEditPerson(p.id)}>

@@ -5,7 +5,7 @@ import { priceFor } from './lib/format.js'
  * Base de datos local (IndexedDB). Es la única fuente de verdad de la app:
  * la UI lee todo con consultas en vivo y escribe sólo a través de estas funciones.
  *
- * - participants: personas (clave única por nombre normalizado).
+ * - participants: personas (clave única por nombre normalizado). `referrer` es quién la trajo, texto libre.
  * - tickets: sólo los números tomados; un número sin fila está disponible.
  *   `participantId` es el dueño del número y `purchaseId` el comprobante con que se pagó.
  * - purchases: una por asignación (el "comprobante"). `amount: null` = usar el monto calculado.
@@ -73,7 +73,7 @@ export const DEFAULT_CONFIG = {
 export const DEFAULT_SHARE = { mode: 'available', format: 'story' }
 
 /** Largos máximos: los mismos que limitan los campos del formulario. */
-export const LIMITS = { name: 80, phone: 30, email: 120 }
+export const LIMITS = { name: 80, phone: 30, email: 120, referrer: 80 }
 
 export function cleanName(name) {
   return String(name ?? '').trim().replace(/\s+/g, ' ')
@@ -96,6 +96,7 @@ function cleanPerson(person, { lenient = false } = {}) {
     name: cleanName(person.name),
     phone: String(person.phone ?? '').trim(),
     email: String(person.email ?? '').trim(),
+    referrer: cleanName(person.referrer),
   }
   if (!data.name) throw new Error('El nombre es obligatorio')
   if (lenient) {
@@ -105,6 +106,9 @@ function cleanPerson(person, { lenient = false } = {}) {
   if (data.name.length > LIMITS.name) throw new Error(`El nombre puede tener hasta ${LIMITS.name} caracteres`)
   if (data.phone.length > LIMITS.phone) throw new Error(`El teléfono puede tener hasta ${LIMITS.phone} caracteres`)
   if (data.email.length > LIMITS.email) throw new Error(`El correo puede tener hasta ${LIMITS.email} caracteres`)
+  if (data.referrer.length > LIMITS.referrer) {
+    throw new Error(`El referido puede tener hasta ${LIMITS.referrer} caracteres`)
+  }
   if (data.email && !/^[^\s@]+@[^\s@]+$/.test(data.email)) throw new Error('El correo no parece válido')
   return data
 }
@@ -115,10 +119,11 @@ async function upsertParticipant(person) {
   const key = personKey(data.name)
   const existing = await db.participants.where('key').equals(key).first()
   if (existing) {
-    // Si el contacto viene vacío se conserva el que ya tenía.
+    // Si el contacto o el referido vienen vacíos se conserva lo que ya tenía.
     const patch = {}
     if (data.phone) patch.phone = data.phone
     if (data.email) patch.email = data.email
+    if (data.referrer) patch.referrer = data.referrer
     if (Object.keys(patch).length) await db.participants.update(existing.id, patch)
     return existing.id
   }
@@ -304,6 +309,7 @@ export function updateParticipant(id, person) {
       await db.participants.update(clash.id, {
         phone: data.phone || clash.phone,
         email: data.email || clash.email,
+        referrer: data.referrer || clash.referrer || '',
       })
       await db.participants.delete(id)
       return clash.id

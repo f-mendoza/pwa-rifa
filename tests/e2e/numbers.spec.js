@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { assign, cell, openApp, toast } from './helpers.js'
+import { assign, cell, goTo, openApp, toast } from './helpers.js'
 
 test.beforeEach(async ({ page }) => openApp(page))
 
@@ -35,6 +35,15 @@ test('asignar números los tacha, actualiza el resumen y confirma', async ({ pag
   await expect(stats).toContainText('$13.000')
   await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3')
   await expect(page.locator('.selection-bar')).not.toHaveClass(/is-visible/)
+})
+
+test('el referido se ve y se puede buscar en Personas', async ({ page }) => {
+  await assign(page, [4, 5], { name: 'Nemesio Arias', referrer: 'Manu' })
+  await assign(page, [6], { name: 'Beto' })
+  await goTo(page, 'Personas')
+  await expect(page.locator('.person').filter({ hasText: 'Nemesio Arias' })).toContainText('referido por Manu')
+  await page.getByPlaceholder('Nombre, referido o número').fill('manu')
+  await expect(page.locator('.person')).toHaveCount(1)
 })
 
 test('los datos quedan guardados al recargar', async ({ page }) => {

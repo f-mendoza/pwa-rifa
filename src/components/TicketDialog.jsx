@@ -80,7 +80,10 @@ function TicketBody({ number, person, purchase, people, onClose, onOpenTicket, o
         <span className="ticket-number">{number}</span>
         <div>
           <p className="ticket-name">{person.name}</p>
-          <p className="muted">{plural(person.numbers.length, 'número', 'números')}</p>
+          <p className="muted">
+            {plural(person.numbers.length, 'número', 'números')}
+            {person.referrer && ` · referido por ${person.referrer}`}
+          </p>
         </div>
       </div>
 

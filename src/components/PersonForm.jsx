@@ -1,19 +1,28 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { LIMITS, personKey } from '../db.js'
 import { plural } from '../lib/format.js'
 
 /**
- * Formulario de nombre (obligatorio) + teléfono y correo (opcionales).
- * `people` alimenta el autocompletado y avisa si el nombre ya existe.
+ * Formulario de nombre (obligatorio) + teléfono, correo y referido (opcionales).
+ * `people` alimenta el autocompletado (nombres y referidos) y avisa si el nombre ya existe.
  */
 export function PersonForm({ initial, people, excludeId, submitLabel, onSubmit, onCancel, children, extra, busy: externalBusy }) {
   const [form, setForm] = useState({
     name: initial?.name ?? '',
     phone: initial?.phone ?? '',
     email: initial?.email ?? '',
+    referrer: initial?.referrer ?? '',
   })
   const [busy, setBusy] = useState(false)
   const listId = useId()
+  const referrerListId = useId()
+
+  // Referidos ya usados, sin repetir aunque estén escritos distinto.
+  const referrers = useMemo(() => {
+    const byKey = new Map()
+    for (const p of people) if (p.referrer && !byKey.has(personKey(p.referrer))) byKey.set(personKey(p.referrer), p.referrer)
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [people])
 
   const key = personKey(form.name)
   const match = key ? people.find((p) => p.key === key && p.id !== excludeId) : null
@@ -57,7 +66,7 @@ export function PersonForm({ initial, people, excludeId, submitLabel, onSubmit, 
         {match && (
           <span className="field-hint is-match">
             {match.name} ya tiene {plural(match.numbers.length, 'número', 'números')}. Se suman a su lista; si dejás el
-            contacto vacío se conserva el que ya tenía.
+            contacto o el referido vacíos se conserva lo que ya tenía.
           </span>
         )}
       </label>
@@ -87,6 +96,23 @@ export function PersonForm({ initial, people, excludeId, submitLabel, onSubmit, 
           />
         </label>
       </div>
+      <label className="field">
+        <span className="field-label">Referido</span>
+        <input
+          value={form.referrer}
+          onChange={set('referrer')}
+          autoComplete="off"
+          maxLength={LIMITS.referrer}
+          enterKeyHint="done"
+          list={referrerListId}
+          placeholder="Quién lo sumó, ej: Manu"
+        />
+        <datalist id={referrerListId}>
+          {referrers.map((r) => (
+            <option key={r} value={r} />
+          ))}
+        </datalist>
+      </label>
       {extra}
       <div className="form-actions">
         {onCancel && (

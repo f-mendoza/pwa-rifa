@@ -85,6 +85,15 @@ describe('assignNumbers', () => {
     expect(await db.tickets.count()).toBe(0)
   })
 
+  it('guarda quién la refirió y no lo pisa si después viene vacío', async () => {
+    await assignNumbers([1], { ...ana, referrer: '  Manu  ' })
+    await assignNumbers([2], { name: 'Ana Perez' })
+    expect((await db.participants.toCollection().first()).referrer).toBe('Manu')
+    await expect(assignNumbers([3], { name: 'Beto', referrer: 'x'.repeat(LIMITS.referrer + 1) })).rejects.toThrow(
+      /referido/,
+    )
+  })
+
   it('acepta nombres con emoji y caracteres no latinos', async () => {
     await assignNumbers([1], { name: 'María 🎉 李' })
     expect((await db.participants.toCollection().first()).name).toBe('María 🎉 李')
@@ -144,6 +153,21 @@ describe('updateParticipant', () => {
     expect(await db.participants.count()).toBe(1)
     expect(new Set((await tickets()).map((t) => t.participantId))).toEqual(new Set([finalId]))
     expect((await db.participants.get(finalId)).phone).toBe('999')
+  })
+
+  it('al unificar conserva el referido que había si el nuevo viene vacío', async () => {
+    await assignNumbers([1], { ...ana, referrer: 'Manu' })
+    await assignNumbers([2], { name: 'Beto' })
+    const beto = await db.participants.where('key').equals(personKey('Beto')).first()
+    const finalId = await updateParticipant(beto.id, { name: 'Ana Pérez' })
+    expect((await db.participants.get(finalId)).referrer).toBe('Manu')
+  })
+
+  it('editar puede borrar el referido', async () => {
+    await assignNumbers([1], { ...ana, referrer: 'Manu' })
+    const { id } = await db.participants.toCollection().first()
+    await updateParticipant(id, { ...ana, referrer: '' })
+    expect((await db.participants.get(id)).referrer).toBe('')
   })
 })
 
@@ -213,7 +237,7 @@ describe('configuración', () => {
 describe('respaldo', () => {
   it('exporta e importa sin perder nada', async () => {
     await saveConfig({ title: 'Club', total: 50 })
-    const id = await assignNumbers([3, 4], ana, { amount: 7000 })
+    const id = await assignNumbers([3, 4], { ...ana, referrer: 'Manu' }, { amount: 7000 })
     await assignNumbers([9], { name: 'Beto' })
     const backup = JSON.parse(JSON.stringify(await exportBackup()))
 
@@ -223,6 +247,8 @@ describe('respaldo', () => {
     expect((await tickets()).map((t) => t.number)).toEqual([3, 4, 9])
     expect((await db.purchases.get(id)).amount).toBe(7000)
     expect((await db.settings.get('config')).value.title).toBe('Club')
+    const people = await db.participants.orderBy('id').toArray()
+    expect(people.map((p) => p.referrer)).toEqual(['Manu', ''])
   })
 
   it('rechaza archivos de otra app o rotos sin tocar los datos actuales', async () => {
@@ -261,6 +287,8 @@ describe('respaldo', () => {
     const person = await db.participants.get(1)
     expect(person.name).toHaveLength(LIMITS.name)
     expect(person.email).toBe('a@b')
+    // Los respaldos de antes del referido lo traen vacío.
+    expect(person.referrer).toBe('')
   })
 
   it('migra respaldos del formato 1 (sin comprobantes)', async () => {

@@ -25,6 +25,7 @@ export async function assign(page, numbers, person, { amount, receipt } = {}) {
   await dialog.getByPlaceholder('Ej: Ana Pérez').fill(person.name)
   if (person.phone) await dialog.getByPlaceholder('221 555 1234').fill(person.phone)
   if (person.email) await dialog.getByPlaceholder('ana@mail.com').fill(person.email)
+  if (person.referrer) await dialog.getByLabel('Referido').fill(person.referrer)
   if (amount != null) await dialog.getByRole('spinbutton').fill(String(amount))
   if (receipt) {
     await dialog.locator('input[type=file]').setInputFiles(receipt)
