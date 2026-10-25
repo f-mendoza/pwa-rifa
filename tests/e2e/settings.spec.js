@@ -103,3 +103,21 @@ test('empezar una rifa nueva pide confirmación y borra las ventas', async ({ pa
   await expect(toast(page)).toContainText('Rifa reiniciada')
   await expect(page.getByText('0% vendido · 0 de 300')).toBeVisible()
 })
+
+test('elegir un tema cambia los colores de la app y se mantiene al recargar', async ({ page }) => {
+  await goTo(page, 'Ajustes')
+  const html = page.locator('html')
+  await expect(html).toHaveAttribute('data-theme', 'flyer')
+  const paper = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+  const before = await paper()
+
+  await page.locator('.theme-option', { hasText: 'Noche' }).click()
+  await expect(page.getByRole('radio', { name: /Noche/ })).toBeChecked()
+  await expect(html).toHaveAttribute('data-theme', 'noche')
+  expect(await paper()).not.toBe(before)
+
+  await page.reload()
+  await expect(html).toHaveAttribute('data-theme', 'noche')
+  await goTo(page, 'Ajustes')
+  await expect(page.getByRole('radio', { name: /Noche/ })).toBeChecked()
+})

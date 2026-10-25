@@ -1,5 +1,7 @@
 import { canvasToBlob } from './canvas.js'
+import { textFont, titleFont } from './fonts.js'
 import { formatMoney, packPhrase } from './format.js'
+import { THEMES, mix, textOn, withAlpha } from './themes.js'
 
 export const IMAGE_FORMATS = {
   story: { width: 1080, height: 1920, label: 'Historia', hint: '9:16' },
@@ -11,30 +13,32 @@ export const IMAGE_MODES = {
   crossed: { label: 'Grilla completa', hint: 'Tacha los tomados' },
 }
 
-const FONT = {
-  display: '"Big Shoulders Display"',
-  sans: 'Outfit',
-  serif: '"Instrument Serif"',
+const loaded = new Map()
+
+/** Carga (una vez) los pesos que usa la imagen: el canvas no espera a las fuentes por su cuenta. */
+function ensureFonts(type) {
+  const specs = [
+    `${type.title.weight} 100px ${type.title.family}`,
+    ...[600, 700, 800].map((w) => `${w} 40px ${type.text.family}`),
+    `${type.text.soft.weight} 40px ${type.text.soft.family}`,
+  ]
+  return Promise.all(
+    specs.map((spec) => {
+      if (!loaded.has(spec)) loaded.set(spec, document.fonts.load(spec).catch(() => {}))
+      return loaded.get(spec)
+    }),
+  )
 }
 
-const COLOR = {
-  pink: '#ee4fbf',
-  pinkDeep: '#c81f8c',
-  ink: '#2e0f2a',
-  white: '#ffffff',
-}
-
-let fontsReady
-function ensureFonts() {
-  fontsReady ??= Promise.all([
-    document.fonts.load(`900 100px ${FONT.display}`, 'RIFA'),
-    document.fonts.load(`500 40px ${FONT.sans}`),
-    document.fonts.load(`600 40px ${FONT.sans}`),
-    document.fonts.load(`700 40px ${FONT.sans}`),
-    document.fonts.load(`800 40px ${FONT.sans}`),
-    document.fonts.load(`400 40px ${FONT.serif}`),
-  ]).catch(() => {})
-  return fontsReady
+/** Todos los colores de la imagen salen de los seis de la paleta. */
+function paletteColors(palette) {
+  const pill = palette.pill ?? mix(palette.accent, palette.ink, 0.2)
+  return {
+    ...palette,
+    pill,
+    onAccent: textOn(palette.accent, [palette.ink, palette.card]),
+    onPill: textOn(pill, [palette.ink, palette.card]),
+  }
 }
 
 /** Generador pseudoaleatorio con semilla: la misma rifa siempre produce la misma imagen. */
@@ -83,11 +87,11 @@ function fitWrapped(ctx, text, { maxWidth, maxSize, minSize, maxLines, weight, f
   return { size: minSize, lines: wrap(ctx, text, maxWidth).slice(0, maxLines) }
 }
 
-function drawBackground(ctx, w, h) {
+function drawBackground(ctx, w, h, color) {
   const base = ctx.createLinearGradient(0, 0, w, 0)
-  base.addColorStop(0, '#f7f2a6')
-  base.addColorStop(0.42, '#fbc9d6')
-  base.addColorStop(1, '#f4a8ee')
+  base.addColorStop(0, color.bg1)
+  base.addColorStop(0.42, color.bg2)
+  base.addColorStop(1, color.bg3)
   ctx.fillStyle = base
   ctx.fillRect(0, 0, w, h)
 
@@ -96,40 +100,42 @@ function drawBackground(ctx, w, h) {
   for (let x = 0; x < w; ) {
     const stripe = 4 + rnd() * 36
     if (rnd() > 0.3) {
-      ctx.fillStyle = `rgba(255,255,255,${(0.05 + rnd() * 0.22).toFixed(3)})`
+      ctx.fillStyle = withAlpha(color.card, (0.05 + rnd() * 0.22).toFixed(3))
       ctx.fillRect(x, 0, stripe, h)
     }
     if (rnd() > 0.85) {
-      ctx.fillStyle = 'rgba(238,79,191,0.06)'
+      ctx.fillStyle = withAlpha(color.accent, 0.06)
       ctx.fillRect(x + stripe, 0, 3, h)
     }
     x += stripe + rnd() * 20
   }
 }
 
-function drawHeader(ctx, config, w, compact) {
+function drawHeader(ctx, config, w, compact, { color, type }) {
   const margin = 64
   const top = compact ? 56 : 76
   const prizes = config.prizes.filter(Boolean)
   const leftW = prizes.length ? 420 : w - margin * 2
 
-  // Título
-  const title = (config.title || 'Rifa').toUpperCase()
+  // Título: se ubica por lo que mide de verdad la letra elegida (cada fuente tiene otra altura).
+  const title = type.title.upper ? (config.title || 'Rifa').toUpperCase() : config.title || 'Rifa'
   const t = fitWrapped(ctx, title, {
     maxWidth: leftW,
     maxSize: compact ? 240 : 300,
     minSize: 64,
     maxLines: 3,
-    weight: 900,
-    family: FONT.display,
+    weight: type.title.weight,
+    family: type.title.family,
   })
-  ctx.fillStyle = COLOR.pink
+  ctx.fillStyle = color.accent
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  const titleLine = t.size * 0.86
-  let y = top + t.size * 0.76
+  const titleLine = t.size * type.title.lineHeight
+  let y = top + ctx.measureText(t.lines[0]).actualBoundingBoxAscent
   t.lines.forEach((line, i) => ctx.fillText(line, margin - 6, y + i * titleLine))
   y += (t.lines.length - 1) * titleLine
+  // Las cursivas y minúsculas bajan de la línea: lo que sigue arranca debajo de las colas.
+  y += ctx.measureText(t.lines.at(-1)).actualBoundingBoxDescent
 
   // Precio
   if (config.price > 0) {
@@ -140,9 +146,9 @@ function drawHeader(ctx, config, w, compact) {
       minSize: 40,
       maxLines: 1,
       weight: 800,
-      family: FONT.sans,
+      family: type.text.family,
     })
-    ctx.fillStyle = COLOR.pink
+    ctx.fillStyle = color.accent
     ctx.fillText(price.lines[0], margin, y)
 
     const pack = packPhrase(config)
@@ -153,10 +159,10 @@ function drawHeader(ctx, config, w, compact) {
         maxSize: compact ? 42 : 50,
         minSize: 24,
         maxLines: 1,
-        weight: 400,
-        family: FONT.serif,
+        weight: type.text.soft.weight,
+        family: type.text.soft.family,
       })
-      ctx.fillStyle = COLOR.ink
+      ctx.fillStyle = color.ink
       ctx.fillText(p.lines[0], margin + 4, y)
     }
   }
@@ -176,17 +182,17 @@ function drawHeader(ctx, config, w, compact) {
       const textX = bx + 26
       const textW = w - margin - textX + 30
 
-      ctx.fillStyle = COLOR.pink
+      ctx.fillStyle = color.accent
       ctx.fillRect(bx, by, w - bx, bandH)
       ctx.fillStyle = 'rgba(255,255,255,0.35)'
       ctx.fillRect(bx, by, w - bx, 3)
 
-      ctx.fillStyle = COLOR.white
+      ctx.fillStyle = color.onAccent
       const label = `${i + 1}° PREMIO`
       if (twoLine) {
         const pad = bandH * 0.16
         const labelSize = Math.round(Math.min(24, Math.max(16, bandH * 0.2)))
-        setFont(ctx, 700, labelSize, FONT.sans)
+        setFont(ctx, 700, labelSize, type.text.family)
         ctx.letterSpacing = '3px'
         ctx.globalAlpha = 0.85
         ctx.fillText(label, textX, by + pad + labelSize * 0.8)
@@ -203,12 +209,12 @@ function drawHeader(ctx, config, w, compact) {
             minSize: 16,
             maxLines: lines,
             weight: 600,
-            family: FONT.sans,
+            family: type.text.family,
           })
         const single = fit(1)
         const double = nameH >= 44 ? fit(2) : single
         const n = double.size > single.size ? double : single
-        setFont(ctx, 600, n.size, FONT.sans)
+        setFont(ctx, 600, n.size, type.text.family)
         const lh = n.size * 1.05
         const blockH = lh * n.lines.length
         const startY = nameTop + (nameH - blockH) / 2 + n.size * 0.82
@@ -220,7 +226,7 @@ function drawHeader(ctx, config, w, compact) {
           minSize: 14,
           maxLines: 1,
           weight: 600,
-          family: FONT.sans,
+          family: type.text.family,
         })
         ctx.fillText(n.lines[0], textX, by + bandH / 2 + n.size * 0.36)
       }
@@ -230,7 +236,7 @@ function drawHeader(ctx, config, w, compact) {
   return bottom
 }
 
-function drawFooter(ctx, config, w, h, compact) {
+function drawFooter(ctx, config, w, h, compact, { color, type }) {
   const margin = 64
   const bottomPad = compact ? 52 : 72
   if (!config.drawText) return h - bottomPad
@@ -240,11 +246,11 @@ function drawFooter(ctx, config, w, h, compact) {
     minSize: 20,
     maxLines: 2,
     weight: 600,
-    family: FONT.sans,
+    family: type.text.family,
   })
   const lh = f.size * 1.2
   const top = h - bottomPad - lh * f.lines.length
-  ctx.fillStyle = COLOR.ink
+  ctx.fillStyle = color.ink
   ctx.textAlign = 'center'
   f.lines.forEach((line, i) => ctx.fillText(line, w / 2, top + f.size * 0.9 + i * lh))
   ctx.textAlign = 'left'
@@ -267,10 +273,10 @@ function fitGrid(count, areaW, areaH, { ratio, gap, maxCell, columns }) {
   return { ...best, cellH: best.cell * ratio }
 }
 
-function drawCross(ctx, x, y, cw, ch, rnd) {
+function drawCross(ctx, x, y, cw, ch, rnd, ink) {
   const j = () => (rnd() - 0.5) * cw * 0.14
   ctx.save()
-  ctx.strokeStyle = COLOR.ink
+  ctx.strokeStyle = ink
   ctx.lineWidth = Math.max(2.5, cw * 0.075)
   ctx.lineCap = 'round'
   ctx.beginPath()
@@ -284,7 +290,7 @@ function drawCross(ctx, x, y, cw, ch, rnd) {
 
 const GRID_COLUMNS = [10, 15, 20, 25, 30, 40, 50]
 
-function drawNumbers(ctx, area, { total, taken, available, mode, compact }) {
+function drawNumbers(ctx, area, { total, taken, available, mode, compact, color, type }) {
   const crossed = mode === 'crossed'
   const numbers = crossed ? Array.from({ length: total }, (_, i) => i + 1) : available
   const pad = compact ? 24 : 32
@@ -310,8 +316,8 @@ function drawNumbers(ctx, area, { total, taken, available, mode, compact }) {
   const panelH = pad * 2 + headH + headGap + gridH
   const panelY = area.y + Math.max(0, (area.h - panelH) / 2)
 
-  ctx.fillStyle = 'rgba(255,255,255,0.52)'
-  ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+  ctx.fillStyle = withAlpha(color.card, 0.52)
+  ctx.strokeStyle = withAlpha(color.card, 0.95)
   ctx.lineWidth = 3
   ctx.beginPath()
   ctx.roundRect(area.x, panelY, area.w, panelH, 30)
@@ -322,33 +328,41 @@ function drawNumbers(ctx, area, { total, taken, available, mode, compact }) {
   const headY = panelY + pad
   const headMid = headY + headH / 2
   const labelSize = compact ? 26 : 32
-  setFont(ctx, 700, labelSize, FONT.sans)
+  setFont(ctx, 700, labelSize, type.text.family)
   ctx.letterSpacing = '4px'
-  ctx.fillStyle = COLOR.ink
+  ctx.fillStyle = color.ink
   ctx.fillText(crossed ? 'NÚMEROS' : 'NÚMEROS DISPONIBLES', area.x + pad, headMid + labelSize * 0.36)
   ctx.letterSpacing = '0px'
 
   const pillText = crossed ? `Quedan ${available.length}` : `${available.length} de ${total}`
   const pillSize = compact ? 26 : 30
-  setFont(ctx, 700, pillSize, FONT.sans)
+  setFont(ctx, 700, pillSize, type.text.family)
   const pillW = ctx.measureText(pillText).width + pillSize * 1.4
   const pillX = area.x + area.w - pad - pillW
-  ctx.fillStyle = COLOR.pinkDeep
+  ctx.fillStyle = color.pill
   ctx.beginPath()
   ctx.roundRect(pillX, headY, pillW, headH, headH / 2)
   ctx.fill()
-  ctx.fillStyle = COLOR.white
+  ctx.fillStyle = color.onPill
   ctx.textAlign = 'center'
   ctx.fillText(pillText, pillX + pillW / 2, headMid + pillSize * 0.36)
 
   const gridTop = headY + headH + headGap
 
   if (!grid) {
-    setFont(ctx, 900, compact ? 120 : 160, FONT.display)
-    ctx.fillStyle = COLOR.pink
-    ctx.fillText('¡AGOTADOS!', area.x + area.w / 2, gridTop + gridH * 0.55)
-    setFont(ctx, 400, compact ? 40 : 48, FONT.serif)
-    ctx.fillStyle = COLOR.ink
+    const soldOut = type.title.upper ? '¡AGOTADOS!' : '¡Agotados!'
+    fitWrapped(ctx, soldOut, {
+      maxWidth: innerW,
+      maxSize: compact ? 120 : 160,
+      minSize: 48,
+      maxLines: 1,
+      weight: type.title.weight,
+      family: type.title.family,
+    })
+    ctx.fillStyle = color.accent
+    ctx.fillText(soldOut, area.x + area.w / 2, gridTop + gridH * 0.55)
+    setFont(ctx, type.text.soft.weight, compact ? 40 : 48, type.text.soft.family)
+    ctx.fillStyle = color.ink
     ctx.fillText('Gracias por participar', area.x + area.w / 2, gridTop + gridH * 0.55 + (compact ? 70 : 90))
     ctx.textAlign = 'left'
     return
@@ -357,8 +371,10 @@ function drawNumbers(ctx, area, { total, taken, available, mode, compact }) {
   const { cols, cell, cellH } = grid
   const gridW = cols * cell + (cols - 1) * gap
   const gridX = area.x + pad + (innerW - gridW) / 2
-  const digits = String(total).length
-  const numSize = Math.min(cellH * 0.56, (cell * 0.84) / (digits * 0.6))
+  // El número más ancho posible (p. ej. "888") tiene que entrar en la casilla con la letra elegida.
+  setFont(ctx, 600, 100, type.text.family)
+  const widest = ctx.measureText('8'.repeat(String(total).length)).width / 100
+  const numSize = Math.min(cellH * 0.56, (cell * 0.84) / widest)
   const rnd = seeded(total * 31 + taken.size)
 
   numbers.forEach((n, i) => {
@@ -366,29 +382,36 @@ function drawNumbers(ctx, area, { total, taken, available, mode, compact }) {
     const y = gridTop + Math.floor(i / cols) * (cellH + gap)
     const isTaken = taken.has(n)
 
-    ctx.fillStyle = isTaken ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.92)'
-    ctx.strokeStyle = isTaken ? 'rgba(46,15,42,0.08)' : 'rgba(238,79,191,0.38)'
+    ctx.fillStyle = withAlpha(color.card, isTaken ? 0.35 : 0.92)
+    ctx.strokeStyle = isTaken ? withAlpha(color.ink, 0.08) : withAlpha(color.accent, 0.38)
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.roundRect(x, y, cell, cellH, Math.min(18, cell * 0.16))
     ctx.fill()
     ctx.stroke()
 
-    setFont(ctx, 600, Math.round(numSize), FONT.sans)
-    ctx.fillStyle = isTaken ? 'rgba(46,15,42,0.3)' : COLOR.ink
+    setFont(ctx, 600, Math.round(numSize), type.text.family)
+    ctx.fillStyle = isTaken ? withAlpha(color.ink, 0.3) : color.ink
     ctx.fillText(String(n), x + cell / 2, y + cellH / 2 + numSize * 0.36)
 
-    if (isTaken) drawCross(ctx, x, y, cell, cellH, rnd)
+    if (isTaken) drawCross(ctx, x, y, cell, cellH, rnd, color.ink)
   })
   ctx.textAlign = 'left'
 }
 
 /**
  * Dibuja el flyer de la rifa y devuelve un PNG.
- * @param {{ config: object, available: number[], mode: 'available'|'crossed', format: 'story'|'post' }} opts
+ * @param {{
+ *   config: object, available: number[], mode: 'available'|'crossed', format: 'story'|'post',
+ *   palette?: object, titleFont?: string, textFont?: string,
+ * }} opts `palette` es una paleta de imagen (ver lib/themes.js); las fuentes, ids de lib/fonts.js.
  */
-export async function renderRaffleImage({ config, available, mode, format }) {
-  await ensureFonts()
+export async function renderRaffleImage({ config, available, mode, format, palette, titleFont: title, textFont: text }) {
+  const style = {
+    color: paletteColors(palette ?? THEMES.flyer.image),
+    type: { title: titleFont(title), text: textFont(text) },
+  }
+  await ensureFonts(style.type)
   const { width, height } = IMAGE_FORMATS[format] ?? IMAGE_FORMATS.story
   const compact = height < 1600
 
@@ -401,14 +424,14 @@ export async function renderRaffleImage({ config, available, mode, format }) {
   const taken = new Set()
   for (let n = 1; n <= config.total; n++) if (!availableSet.has(n)) taken.add(n)
 
-  drawBackground(ctx, width, height)
-  const headerBottom = drawHeader(ctx, config, width, compact)
-  const footerTop = drawFooter(ctx, config, width, height, compact)
+  drawBackground(ctx, width, height, style.color)
+  const headerBottom = drawHeader(ctx, config, width, compact, style)
+  const footerTop = drawFooter(ctx, config, width, height, compact, style)
   const gapY = compact ? 32 : 48
   drawNumbers(
     ctx,
     { x: 52, y: headerBottom + gapY, w: width - 104, h: footerTop - headerBottom - gapY * 2 },
-    { total: config.total, taken, available, mode, compact },
+    { total: config.total, taken, available, mode, compact, ...style },
   )
 
   return canvasToBlob(canvas, 'image/png')

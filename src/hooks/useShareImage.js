@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { renderRaffleImage } from '../lib/shareImage.js'
+import { resolveImagePalette } from '../lib/themes.js'
 
 /**
  * Mantiene la imagen para compartir siempre pre-generada. Así el botón
@@ -18,7 +19,16 @@ export function useShareImage(data) {
   const key = useMemo(
     () =>
       data
-        ? JSON.stringify({ config: data.config, available: data.available, mode: data.share.mode, format: data.share.format })
+        ? JSON.stringify({
+            config: data.config,
+            available: data.available,
+            mode: data.share.mode,
+            format: data.share.format,
+            // Ya resuelta: con "Como la app", cambiar el tema de la app también redibuja.
+            palette: resolveImagePalette(data.share, data.appearance.theme),
+            titleFont: data.share.titleFont,
+            textFont: data.share.textFont,
+          })
         : null,
     [data],
   )

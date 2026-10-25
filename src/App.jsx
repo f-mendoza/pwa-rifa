@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { NumbersView } from './components/NumbersView.jsx'
 import { ParticipantsView } from './components/ParticipantsView.jsx'
@@ -20,6 +20,7 @@ import {
   importBackup,
   releaseNumber,
   removeReceipt,
+  saveAppearance,
   saveConfig,
   setPurchaseAmount,
   setReceipt,
@@ -33,6 +34,7 @@ import { useShareImage } from './hooks/useShareImage.js'
 import { friendlyError } from './lib/errors.js'
 import { availableMessage, plural, todayStamp } from './lib/format.js'
 import { copyImage, copyText, downloadBlob, shareImageFile } from './lib/share.js'
+import { applyTheme } from './lib/themes.js'
 import './App.css'
 
 const TABS = [
@@ -58,6 +60,12 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
   const tabsAnchor = useRef(null)
+
+  // El tema guardado en la base manda (p. ej. al restaurar un respaldo de otro teléfono).
+  const theme = data?.appearance.theme
+  useEffect(() => {
+    if (theme) applyTheme(theme)
+  }, [theme])
 
   const notify = useCallback((message, tone = 'info') => {
     clearTimeout(toastTimer.current)
@@ -203,6 +211,7 @@ export default function App() {
           <SettingsView
             data={data}
             onSaveConfig={(config) => run(() => saveConfig(config), 'Cambios guardados')}
+            onSaveAppearance={(appearance) => run(() => saveAppearance(appearance))}
             onExport={() =>
               run(async () => {
                 const backup = await exportBackup()

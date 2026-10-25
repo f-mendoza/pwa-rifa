@@ -1,5 +1,8 @@
 import Dexie from 'dexie'
+import { DEFAULT_TEXT_FONT, DEFAULT_TITLE_FONT, TEXT_FONTS, TITLE_FONTS } from './lib/fonts.js'
 import { priceFor } from './lib/format.js'
+import { IMAGE_FORMATS, IMAGE_MODES } from './lib/shareImage.js'
+import { DEFAULT_THEME, THEMES, normalizeImageColors } from './lib/themes.js'
 
 /**
  * Base de datos local (IndexedDB). Es la única fuente de verdad de la app:
@@ -11,7 +14,7 @@ import { priceFor } from './lib/format.js'
  * - purchases: una por asignación (el "comprobante"). `amount: null` = usar el monto calculado.
  * - receipts: imagen o PDF del comprobante, aparte para no cargar blobs en cada consulta.
  *   Normalmente en `blob`; donde IndexedDB no acepta Blobs (Safari en modo privado), en `buffer`.
- * - settings: configuración de la rifa y preferencias de la imagen.
+ * - settings: configuración de la rifa (`config`), de la imagen (`share`) y tema de la app (`appearance`).
  */
 export const db = new Dexie('rifa')
 
@@ -70,7 +73,20 @@ export const DEFAULT_CONFIG = {
   drawText: 'Sorteamos el 16 de noviembre por Lotería de la Provincia nocturna',
 }
 
-export const DEFAULT_SHARE = { mode: 'available', format: 'story' }
+/**
+ * Preferencias de la imagen. `palette` es 'app' (sigue al tema de la app), el id de un tema
+ * o 'custom' (usa `colors`, ver IMAGE_COLOR_FIELDS en lib/themes.js).
+ */
+export const DEFAULT_SHARE = {
+  mode: 'available',
+  format: 'story',
+  palette: 'app',
+  colors: null,
+  titleFont: DEFAULT_TITLE_FONT,
+  textFont: DEFAULT_TEXT_FONT,
+}
+
+export const DEFAULT_APPEARANCE = { theme: DEFAULT_THEME }
 
 /** Largos máximos: los mismos que limitan los campos del formulario. */
 export const LIMITS = { name: 80, phone: 30, email: 120, referrer: 80 }
@@ -370,8 +386,32 @@ export async function saveConfig(raw) {
   })
 }
 
+const oneOf = (value, options, fallback) => (typeof value === 'string' && Object.hasOwn(options, value) ? value : fallback)
+
+/** Completa y valida las preferencias de la imagen: lo desconocido (de otra versión) vuelve al valor por defecto. */
+export function normalizeSharePrefs(raw) {
+  const prefs = { ...DEFAULT_SHARE, ...raw }
+  const palette = prefs.palette === 'app' || prefs.palette === 'custom' ? prefs.palette : oneOf(prefs.palette, THEMES, 'app')
+  return {
+    mode: oneOf(prefs.mode, IMAGE_MODES, DEFAULT_SHARE.mode),
+    format: oneOf(prefs.format, IMAGE_FORMATS, DEFAULT_SHARE.format),
+    palette,
+    colors: normalizeImageColors(prefs.colors),
+    titleFont: oneOf(prefs.titleFont, TITLE_FONTS, DEFAULT_TITLE_FONT),
+    textFont: oneOf(prefs.textFont, TEXT_FONTS, DEFAULT_TEXT_FONT),
+  }
+}
+
+export function normalizeAppearance(raw) {
+  return { theme: oneOf(raw?.theme, THEMES, DEFAULT_THEME) }
+}
+
 export function saveSharePrefs(prefs) {
-  return db.settings.put({ key: 'share', value: prefs })
+  return db.settings.put({ key: 'share', value: normalizeSharePrefs(prefs) })
+}
+
+export function saveAppearance(prefs) {
+  return db.settings.put({ key: 'appearance', value: normalizeAppearance(prefs) })
 }
 
 export function clearNumbers() {
@@ -499,7 +539,11 @@ async function parseBackup(data) {
 
   for (let i = 0; i < receipts.length; i++) receipts[i] = await storableReceipt(receipts[i])
 
-  const settings = data.settings.filter((s) => s && (s.key === 'config' || s.key === 'share'))
+  const settings = data.settings.filter((s) => s && ['config', 'share', 'appearance'].includes(s.key))
+  for (const row of settings) {
+    if (row.key === 'share') row.value = normalizeSharePrefs(row.value)
+    if (row.key === 'appearance') row.value = normalizeAppearance(row.value)
+  }
   const configRow = settings.find((s) => s.key === 'config')
   if (configRow) {
     try {

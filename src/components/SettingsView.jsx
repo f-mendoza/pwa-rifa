@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { MAX_TOTAL } from '../db.js'
 import { requestPersistence } from '../hooks/usePwa.js'
+import { THEMES } from '../lib/themes.js'
+import { ThemeSwatch } from './Swatches.jsx'
 
 // Un campo vacío queda vacío mientras se escribe (si no, borrar "300" dejaba un 0 pegado).
 const toInt = (value) => {
@@ -9,12 +11,49 @@ const toInt = (value) => {
   return Number.isFinite(n) ? n : ''
 }
 
-export function SettingsView({ data, onSaveConfig, onExport, onImport, onClear }) {
+export function SettingsView({ data, onSaveConfig, onSaveAppearance, onExport, onImport, onClear }) {
   return (
     <div className="settings">
       <ConfigForm key={JSON.stringify(data.config)} config={data.config} onSave={onSaveConfig} />
+      <AppearancePanel appearance={data.appearance} onChange={onSaveAppearance} />
       <DataPanel data={data} onExport={onExport} onImport={onImport} onClear={onClear} />
     </div>
+  )
+}
+
+/** El tema se aplica al tocarlo: el cambio de colores ya es la confirmación. */
+function AppearancePanel({ appearance, onChange }) {
+  return (
+    <section className="panel" aria-labelledby="appearance-title">
+      <h2 id="appearance-title" className="section-title">
+        Apariencia
+      </h2>
+      <p className="muted">
+        Los colores de la app. La imagen para compartir los sigue, salvo que en Imagen le elijas otros.
+      </p>
+      <fieldset className="choice">
+        <legend className="visually-hidden">Tema</legend>
+        <div className="theme-options">
+          {Object.entries(THEMES).map(([id, theme]) => (
+            <label key={id} className="theme-option">
+              <input
+                type="radio"
+                name="theme"
+                value={id}
+                className="visually-hidden"
+                checked={appearance.theme === id}
+                onChange={() => onChange({ ...appearance, theme: id })}
+              />
+              <ThemeSwatch theme={theme} />
+              <span className="theme-name">
+                <strong>{theme.name}</strong>
+                <small>{theme.hint}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    </section>
   )
 }
 

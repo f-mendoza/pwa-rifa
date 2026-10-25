@@ -1,49 +1,14 @@
 :root {
-  /* Paleta tomada del flyer: limón → rosa → lila, fucsia y tinta ciruela en vez de negro */
-  --lemon: #f7f2a6;
-  --blush: #fbc9d6;
-  --lilac: #f4a8ee;
-  --pink: #ee4fbf;
-  --pink-strong: #c81f8c;
-  --pink-deep: #a3166f;
-  --pink-wash: #fde8f5;
-  --pink-wash-2: #fbd6ee;
-  --pink-line: #f7c6e6;
-  --pink-hover: #f472cc;
-
-  --ink: #2e0f2a;
-  --ink-2: #634560;
-  /* ink-3 sigue siendo el gris más suave, pero con contraste AA sobre blanco y lavados */
-  --ink-3: #7a6077;
-  --paper: #fff9f3;
-  --surface: #fffdfe;
-  --surface-2: #fffafc;
-  --wash: #f7eef3;
-  --wash-2: #faf4f7;
-  --wash-hover: #faf1f6;
-  --taken: #f5ecf1;
-  --on-accent: #fffafd;
-  --line: #f1dfea;
-  --line-strong: #e3c4d7;
-
-  --danger: #b42318;
-  --danger-wash: #fdecea;
-  --danger-hover: #8f1c13;
-  --success: #17724a;
-  --warn: #e0a33a;
-  --warn-ink: #7a5a00;
-  --warn-wash: #fbf3c9;
-  --note-wash: #fbf7cf;
-  --note-line: #ece49a;
-  --empty-wash: #fffbea;
-  --empty-line: #e6cf6a;
-  --empty-ink: #8a6c0a;
-
+  /* Los colores son del tema elegido: los define `applyTheme` (src/lib/themes.js) en <html>. */
   --radius-sm: 10px;
   --radius: 14px;
   --radius-lg: 22px;
-  --shadow-sm: 0 1px 2px rgb(46 15 42 / 0.06), 0 2px 8px rgb(46 15 42 / 0.04);
-  --shadow-lg: 0 12px 40px rgb(46 15 42 / 0.18), 0 2px 8px rgb(46 15 42 / 0.08);
+  --shadow-sm:
+    0 1px 2px color-mix(in srgb, var(--shadow) 6%, transparent),
+    0 2px 8px color-mix(in srgb, var(--shadow) 4%, transparent);
+  --shadow-lg:
+    0 12px 40px color-mix(in srgb, var(--shadow) 18%, transparent),
+    0 2px 8px color-mix(in srgb, var(--shadow) 8%, transparent);
 
   --display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
   --sans: 'Outfit', system-ui, sans-serif;
@@ -57,7 +22,6 @@
   --dur: 220ms;
   --dur-slow: 320ms;
 
-  color-scheme: light;
   font: 400 16px/1.5 var(--sans);
   color: var(--ink);
   background: var(--paper);
@@ -132,7 +96,7 @@ svg {
 }
 
 :focus-visible {
-  outline: 3px solid var(--pink-strong);
+  outline: 3px solid var(--accent-strong);
   outline-offset: 2px;
 }
 

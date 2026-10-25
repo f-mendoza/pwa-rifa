@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  DEFAULT_SHARE,
   LIMITS,
   assignNumbers,
   clearNumbers,
@@ -7,12 +8,16 @@ import {
   exportBackup,
   importBackup,
   normalizeAmount,
+  normalizeAppearance,
   normalizeConfig,
+  normalizeSharePrefs,
   personKey,
   receiptBlob,
   releaseNumber,
   removeReceipt,
+  saveAppearance,
   saveConfig,
+  saveSharePrefs,
   setPurchaseAmount,
   setReceipt,
   supportsBlobStorage,
@@ -231,6 +236,66 @@ describe('configuración', () => {
     expect(await db.tickets.count()).toBe(0)
     expect(await db.participants.count()).toBe(0)
     expect((await db.settings.get('config')).value.title).toBe('Club')
+  })
+})
+
+describe('preferencias de la imagen y apariencia', () => {
+  const colors = { bg1: '#112233', bg2: '#223344', bg3: '#334455', accent: '#FF0000', ink: '#ffffff', card: '#000000' }
+
+  it('completa lo que falta con los valores por defecto', () => {
+    expect(normalizeSharePrefs(undefined)).toEqual(DEFAULT_SHARE)
+    // Las preferencias guardadas antes de esta versión sólo tenían modo y formato.
+    expect(normalizeSharePrefs({ mode: 'crossed', format: 'post' })).toEqual({ ...DEFAULT_SHARE, mode: 'crossed', format: 'post' })
+  })
+
+  it('descarta valores desconocidos y colores inválidos', () => {
+    const prefs = normalizeSharePrefs({
+      mode: 'otro',
+      palette: 'inexistente',
+      titleFont: 'Comic Sans',
+      textFont: 42,
+      colors: { ...colors, card: 'negro' },
+    })
+    expect(prefs).toEqual(DEFAULT_SHARE)
+  })
+
+  it('acepta temas, paleta personalizada y fuentes válidas', () => {
+    const prefs = normalizeSharePrefs({ palette: 'custom', colors, titleFont: 'lobster', textFont: 'lora' })
+    expect(prefs.palette).toBe('custom')
+    expect(prefs.colors.accent).toBe('#ff0000')
+    expect(normalizeSharePrefs({ palette: 'menta' }).palette).toBe('menta')
+    expect(prefs.titleFont).toBe('lobster')
+    expect(prefs.textFont).toBe('lora')
+  })
+
+  it('el tema de la app sólo puede ser uno de los conocidos', () => {
+    expect(normalizeAppearance({ theme: 'noche' })).toEqual({ theme: 'noche' })
+    expect(normalizeAppearance({ theme: 'neón' })).toEqual({ theme: 'flyer' })
+    expect(normalizeAppearance(null)).toEqual({ theme: 'flyer' })
+  })
+
+  it('se guardan normalizadas', async () => {
+    await saveSharePrefs({ ...DEFAULT_SHARE, palette: 'custom', colors, titleFont: 'nada' })
+    const saved = (await db.settings.get('share')).value
+    expect(saved.titleFont).toBe(DEFAULT_SHARE.titleFont)
+    expect(saved.colors.accent).toBe('#ff0000')
+    await saveAppearance({ theme: 'grafito', extra: true })
+    expect((await db.settings.get('appearance')).value).toEqual({ theme: 'grafito' })
+  })
+
+  it('viajan en el respaldo y se validan al restaurar', async () => {
+    await saveAppearance({ theme: 'oceano' })
+    await saveSharePrefs({ ...DEFAULT_SHARE, palette: 'lavanda', textFont: 'nunito' })
+    const backup = await exportBackup()
+    const share = backup.settings.find((s) => s.key === 'share')
+    share.value.titleFont = 'Papyrus'
+    await db.settings.clear()
+    await importBackup(backup)
+    expect((await db.settings.get('appearance')).value).toEqual({ theme: 'oceano' })
+    const restored = (await db.settings.get('share')).value
+    expect(restored.palette).toBe('lavanda')
+    expect(restored.textFont).toBe('nunito')
+    expect(restored.titleFont).toBe(DEFAULT_SHARE.titleFont)
   })
 })
 

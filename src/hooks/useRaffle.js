@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo } from 'react'
-import { DEFAULT_CONFIG, DEFAULT_SHARE, db, receiptBlob } from '../db.js'
+import { DEFAULT_CONFIG, db, normalizeAppearance, normalizeSharePrefs, receiptBlob } from '../db.js'
 import { priceFor } from '../lib/format.js'
 
 /**
@@ -9,9 +9,10 @@ import { priceFor } from '../lib/format.js'
  */
 export function useRaffle() {
   const raw = useLiveQuery(async () => {
-    const [config, share, participants, tickets, purchases, receipts] = await Promise.all([
+    const [config, share, appearance, participants, tickets, purchases, receipts] = await Promise.all([
       db.settings.get('config'),
       db.settings.get('share'),
+      db.settings.get('appearance'),
       db.participants.toArray(),
       db.tickets.toArray(),
       db.purchases.toArray(),
@@ -20,7 +21,8 @@ export function useRaffle() {
     ])
     return {
       config: { ...DEFAULT_CONFIG, ...config?.value },
-      share: { ...DEFAULT_SHARE, ...share?.value },
+      share: normalizeSharePrefs(share?.value),
+      appearance: normalizeAppearance(appearance?.value),
       participants,
       tickets,
       purchases,
@@ -42,7 +44,7 @@ function groupNumbers(tickets, field) {
   return map
 }
 
-function derive({ config, share, participants, tickets, purchases: purchaseRows, receipts: receiptRows }) {
+function derive({ config, share, appearance, participants, tickets, purchases: purchaseRows, receipts: receiptRows }) {
   const ticketByNumber = new Map(tickets.map((t) => [t.number, t]))
   const numbersByOwner = groupNumbers(tickets, 'participantId')
   const numbersByPurchase = groupNumbers(tickets, 'purchaseId')
@@ -82,6 +84,7 @@ function derive({ config, share, participants, tickets, purchases: purchaseRows,
   return {
     config,
     share,
+    appearance,
     people,
     peopleById: new Map(people.map((p) => [p.id, p])),
     ticketByNumber,
