@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSyncManager } from '../../src/sync/manager.js'
 import { createFakeServer } from '../../src/sync/fakeServer.js'
-import { device, outbox, sharedRaffle } from './syncHelpers.js'
+import { downloadRaffle, syncRaffle } from '../../src/sync/engine.js'
+import { SyncError } from '../../src/sync/transport.js'
+import { device, outbox, sharedRaffle, tickets } from './syncHelpers.js'
 
 const managers = []
 afterEach(() => {
@@ -28,6 +30,78 @@ function manager(store, getTransport, options = {}) {
 const needsLogin = async (store) => (await store.db.settings.get('syncState'))?.value?.needsLogin
 
 describe('createSyncManager', () => {
+  it('una rifa inactiva con error no bloquea el push y el pull de la abierta ni pierde su backoff', async () => {
+    const { a, b, server, raffleId: brokenId } = await sharedRaffle()
+    const activeId = await a.store.createCloudRaffle({ title: 'Sana' }, a.transport)
+    server.addMember(activeId, b.user, 'seller')
+    await downloadRaffle(activeId, b.transport, { store: b.store })
+    await b.store.assignNumbers(activeId, [9], { name: 'Venta remota' })
+    await syncRaffle(activeId, b.transport, { store: b.store })
+    const pullChanges = vi.fn(async (id, ...args) => {
+      if (id === brokenId) throw new SyncError('server')
+      return a.transport.pullChanges(id, ...args)
+    })
+    const transport = { ...a.transport, pullChanges }
+    await expect(syncRaffle(brokenId, transport, { store: a.store })).rejects.toMatchObject({ kind: 'server' })
+    await a.store.assignNumbers(activeId, [7], { name: 'Ana' })
+    pullChanges.mockClear()
+    const m = manager(a.store, () => transport, { retryBaseMs: 60_000 })
+    m.start()
+    await vi.waitFor(async () => expect(await outbox(a.store, activeId)).toEqual([]))
+    await vi.waitFor(() => expect(m.status.state).toBe('error'))
+    expect(pullChanges.mock.calls.map(([id]) => id)).toEqual([brokenId, activeId])
+    expect((await tickets(a.store, activeId)).map((n) => n.number)).toEqual([7, 9])
+    const retryAt = m.status.retryAt
+
+    // Otra escritura se sincroniza durante la espera de la rifa rota; su éxito no reinicia esa espera.
+    await a.store.assignNumbers(activeId, [8], { name: 'Beto' })
+    await vi.waitFor(async () => expect(await outbox(a.store, activeId)).toEqual([]))
+    await vi.waitFor(async () => expect((await a.store.db.raffles.get(activeId)).remote.syncPending).toBe(false))
+    expect(pullChanges.mock.calls.filter(([id]) => id === brokenId)).toHaveLength(1)
+    expect(m.status.retryAt).toBe(retryAt)
+
+    // Reintentar manualmente permite recuperar la rifa que fallaba y vuelve al estado normal.
+    pullChanges.mockImplementation((...args) => a.transport.pullChanges(...args))
+    await m.syncNow()
+    expect((await a.store.db.raffles.get(brokenId)).remote).toMatchObject({ syncPending: false, syncError: null })
+    expect(m.status).toMatchObject({ state: 'idle', retryAt: 0 })
+  })
+
+  it('recupera rifas inactivas con reconciliación o errores pendientes y sin outbox', async () => {
+    const { a, b, raffleId } = await sharedRaffle()
+    await a.store.assignNumbers(raffleId, [7], { name: 'Juan' })
+    await syncRaffle(raffleId, a.transport, { store: a.store })
+    await b.store.assignNumbers(raffleId, [7, 9], { name: 'Pedro' })
+    const getSnapshot = b.transport.getSnapshot
+    b.transport.getSnapshot = async () => { throw new SyncError('network') }
+    await expect(syncRaffle(raffleId, b.transport, { store: b.store })).rejects.toMatchObject({ kind: 'network' })
+    await b.store.createRaffle({ title: 'Local abierta' })
+    // Prueba la marca de reconciliación por sí sola, sin depender del error o del aviso.
+    await b.store.db.raffles.update(raffleId, { 'remote.syncError': null, 'remote.syncPending': false })
+    await b.store.dismissConflicts(raffleId)
+    b.transport.getSnapshot = getSnapshot
+    const m = manager(b.store, () => b.transport)
+    m.start()
+    await vi.waitFor(() => expect(m.status.lastSyncAt).toEqual(expect.any(Number)))
+    await vi.waitFor(async () => expect((await b.store.db.raffles.get(raffleId)).remote.needsReconcile).toBe(false))
+    expect((await b.store.db.numbers.where('raffleId').equals(raffleId).toArray()).map((n) => n.number)).toEqual([7])
+
+    // Un fallo del pull, aun sin ventas pendientes, también debe retomarse si cambiamos de rifa.
+    b.transport.setOnline(false)
+    await expect(syncRaffle(raffleId, b.transport, { store: b.store })).rejects.toMatchObject({ kind: 'network' })
+    await b.store.db.raffles.update(raffleId, { 'remote.syncPending': false })
+    b.transport.setOnline(true)
+    await m.syncNow()
+    expect((await b.store.db.raffles.get(raffleId)).remote.syncError).toBeNull()
+
+    // Una página cerrada durante un ciclo no alcanza a guardar un error.
+    await b.store.db.raffles.update(raffleId, { 'remote.syncPending': true })
+    b.transport.calls.length = 0
+    await m.syncNow()
+    expect(b.transport.calls.length).toBeGreaterThan(0)
+    expect((await b.store.db.raffles.get(raffleId)).remote.syncPending).toBe(false)
+  })
+
   it('sin rifas en la nube no hace nada de red (ni pide el transporte)', async () => {
     const store = device()
     await store.db.open()

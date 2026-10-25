@@ -13,7 +13,7 @@ import { isSyncError } from './transport.js'
  * su turno y toman la posta si esa se cierra. Sin Web Locks, cada pestaña sincroniza por su cuenta
  * (el servidor es idempotente, así que no se duplica nada).
  *
- * Ante errores de red o del servidor espera cada vez más (backoff exponencial). Con 401 deja
+ * Ante errores de red o del servidor espera cada vez más por rifa (backoff exponencial). Con 401 deja
  * `settings.syncState.needsLogin` (lo ven todas las pestañas) sin tocar el outbox. Con 403/410
  * el motor marca `remote.status`.
  *
@@ -48,8 +48,7 @@ export function createSyncManager({
   let outboxWatch = null
   let running = null
   let again = false
-  let failures = 0
-  let retryAt = 0
+  const retries = new Map()
   let status = { state: 'idle', error: null, retryAt: 0, lastSyncAt: null }
   const listeners = new Set()
 
@@ -69,8 +68,7 @@ export function createSyncManager({
   }
   const onOnline = () => {
     // Volvió la señal: no hace falta esperar lo que quedaba del backoff.
-    failures = 0
-    retryAt = 0
+    retries.clear()
     request()
   }
 
@@ -113,7 +111,7 @@ export function createSyncManager({
     return running
   }
 
-  /** Las rifas para sincronizar: la abierta (si es de la nube) y las que tienen algo por enviar. */
+  /** Rifas para sincronizar: la abierta y las que tienen envíos o recuperación pendientes. */
   async function targets() {
     const userId = getUserId()
     const mine = (r) => userId == null || r.remote.userId == null || r.remote.userId === userId
@@ -126,23 +124,44 @@ export function createSyncManager({
     ])
     const busy = new Set([...outbox, ...uploads])
     return raffles
-      .filter((r) => r.id === active?.value || busy.has(r.id) || r.remote.syncedVersion == null)
+      .filter((r) =>
+        r.id === active?.value || busy.has(r.id) || r.remote.syncedVersion == null ||
+        r.remote.needsReconcile || r.remote.syncPending || r.remote.syncError,
+      )
       .map((r) => r.id)
   }
 
-  function backoff(err) {
-    failures += 1
+  function backoff(id, err) {
+    const failures = (retries.get(id)?.failures ?? 0) + 1
     const delay = Math.min(retryBaseMs * 2 ** (failures - 1), retryMaxMs)
-    retryAt = Date.now() + delay
+    retries.set(id, { failures, retryAt: Date.now() + delay, error: err })
+  }
+
+  /** Un solo timer despierta al manager cuando vence la próxima espera de cualquier rifa. */
+  function scheduleRetry() {
     clearTimeout(retryTimer)
-    retryTimer = setTimeout(() => request(), delay)
-    setStatus({ state: err?.kind === 'network' ? 'offline' : 'error', error: err, retryAt })
+    let next = null
+    for (const retry of retries.values()) {
+      if (!next || retry.retryAt < next.retryAt) next = retry
+    }
+    if (next && leader) retryTimer = setTimeout(() => request(), Math.max(1, next.retryAt - Date.now()))
+    return next
   }
 
   async function cycle() {
     const ids = await targets()
-    if (!ids.length) return setStatus({ state: 'idle', error: null })
-    if (Date.now() < retryAt) return
+    const targetsSet = new Set(ids)
+    for (const id of retries.keys()) if (!targetsSet.has(id)) retries.delete(id)
+    if (!ids.length) {
+      scheduleRetry()
+      return setStatus({ state: 'idle', error: null, retryAt: 0 })
+    }
+    const ready = ids.filter((id) => Date.now() >= (retries.get(id)?.retryAt ?? 0))
+    if (!ready.length) {
+      // Un timer puede dispararse antes del milisegundo previsto: se rearma sin perder el reintento.
+      scheduleRetry()
+      return
+    }
     if (!isOnline()) return setStatus({ state: 'offline', error: null })
     const transport = getTransport()
     if (!transport) {
@@ -150,23 +169,31 @@ export function createSyncManager({
       return setStatus({ state: 'auth', error: null })
     }
     setStatus({ state: 'syncing' })
-    for (const id of ids) {
+    let lastSyncAt = status.lastSyncAt
+    for (const id of ready) {
       try {
         await syncRaffle(id, transport, { store })
+        retries.delete(id)
+        lastSyncAt = Date.now()
       } catch (err) {
-        if (!isSyncError(err)) return backoff(err)
-        if (err.kind === 'auth') {
+        if (isSyncError(err) && err.kind === 'auth') {
+          clearTimeout(retryTimer)
           await store.setSyncState({ needsLogin: true })
-          return setStatus({ state: 'auth', error: err })
+          return setStatus({ state: 'auth', error: err, retryAt: 0 })
         }
-        if (err.retryable) return backoff(err)
+        if (!isSyncError(err) || err.retryable) backoff(id, err)
+        else retries.delete(id)
         // forbidden / gone (ya marcados por el motor) o un rechazo puntual: se sigue con las demás.
       }
     }
-    failures = 0
-    retryAt = 0
     await store.setSyncState({ needsLogin: false })
-    setStatus({ state: 'idle', error: null, retryAt: 0, lastSyncAt: Date.now() })
+    const next = scheduleRetry()
+    setStatus({
+      state: next ? (next.error?.kind === 'network' ? 'offline' : 'error') : 'idle',
+      error: next?.error ?? null,
+      retryAt: next?.retryAt ?? 0,
+      lastSyncAt,
+    })
   }
 
   return {
@@ -207,8 +234,7 @@ export function createSyncManager({
 
     /** Sincroniza ya (p. ej. al tocar "Reintentar"), sin esperar el backoff. */
     syncNow() {
-      failures = 0
-      retryAt = 0
+      retries.clear()
       return request()
     },
 

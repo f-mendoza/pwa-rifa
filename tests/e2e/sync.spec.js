@@ -7,6 +7,19 @@ test('una rifa local no muestra nada de sincronización', async ({ page }) => {
   await expect(page.locator('.sync-bar')).toHaveCount(0)
 })
 
+test('un servidor inaccesible deja de mostrarse sincronizado aunque haya internet y no haya ventas pendientes', async ({ page }) => {
+  await page.goto('/?nube-falsa')
+  await page.waitForFunction(() => Boolean(globalThis.__rifaNube))
+  await page.evaluate(() => globalThis.__rifaNube.createRaffle('Conexión'))
+  const state = page.locator('.sync-state')
+  await expect(state).toHaveText('Sincronizado')
+  await page.evaluate(() => globalThis.__rifaNube.setOnline(false))
+  await expect(state).toContainText('Sin conexión con la nube', { timeout: 15_000 })
+  await expect(state).toContainText('Tus datos siguen guardados en este teléfono')
+  await page.evaluate(() => globalThis.__rifaNube.setOnline(true))
+  await expect(state).toHaveText('Sincronizado', { timeout: 15_000 })
+})
+
 // `/?nube-falsa` (sólo en desarrollo) reemplaza la API por un servidor en memoria: ver src/sync/dev.js.
 test('rifa en la nube: cambios sin enviar, sincronizado y conflictos', async ({ page }) => {
   await page.goto('/?nube-falsa')

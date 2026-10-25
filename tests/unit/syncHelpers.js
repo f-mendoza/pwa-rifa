@@ -3,6 +3,17 @@ import { createFakeServer } from '../../src/sync/fakeServer.js'
 
 let count = 0
 
+/** Pausa un pedido hasta que el test decida resolverlo o hacerlo fallar. */
+export function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((ok, fail) => {
+    resolve = ok
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
 /** Un "teléfono": una base Dexie propia, independiente de las demás. */
 export function device(label = 'telefono') {
   count += 1

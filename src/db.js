@@ -17,7 +17,8 @@ import { explainSyncError } from './sync/transport.js'
  * - raffles: una por rifa, con su configuración (`config`) y la de su imagen (`share`).
  *   `archivedAt` sólo la agrupa aparte en la lista. `lastSeq` es el último número de comprobante usado.
  *   `remote` es `null` en una rifa local; en una rifa en la nube,
- *   `{ syncedVersion, role, ranges, userId, lastSyncAt, status }` (ver docs/sync-protocolo.md).
+ *   `{ syncedVersion, role, ranges, userId, lastSyncAt, status, needsReconcile, syncPending, syncCycleId, syncError }`
+ *   (ver docs/sync-protocolo.md).
  * - people: personas de una rifa (clave única por nombre normalizado dentro de la rifa).
  *   `referrer` es quién la trajo, texto libre.
  * - numbers: sólo los números tomados; un número sin fila está disponible. El id es

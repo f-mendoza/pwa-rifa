@@ -68,21 +68,27 @@ function pendingSales(outbox) {
 
 /**
  * Estado de sincronización para la UI (`null` en una rifa local):
- * `{ status, role, ranges, lastSyncAt, pending, conflicts, needsLogin, otherAccount }`.
+ * `{ status, role, ranges, lastSyncAt, needsReconcile, syncPending, syncError, pending, conflicts, needsLogin, otherAccount }`.
  * `otherAccount`: hay una sesión iniciada, pero la rifa es de otra cuenta (no se sincroniza).
  */
 function syncInfo(raffle, sync, user) {
   if (!raffle.remote || !sync) return null
-  const { status = 'active', role = null, ranges = null, lastSyncAt = null, userId = null } = raffle.remote
+  const {
+    status = 'active', role = null, ranges = null, lastSyncAt = null, userId = null,
+    needsReconcile = false, syncPending = false, syncError = null,
+  } = raffle.remote
   return {
     otherAccount: Boolean(user && userId != null && user.id !== userId),
     status,
     role,
     ranges,
     lastSyncAt,
+    needsReconcile,
+    syncPending,
+    syncError,
     pending: sync.outbox.length + sync.uploads,
     conflicts: [...sync.conflicts].sort((a, b) => b.createdAt - a.createdAt || b.id - a.id),
-    needsLogin: sync.needsLogin,
+    needsLogin: sync.needsLogin || syncError?.kind === 'auth',
   }
 }
 

@@ -200,7 +200,8 @@ export async function applySnapshotRows(db, snapshot, { userId } = {}) {
   const pending = await pendingKeys(db, raffleId)
   const local = await db.raffles.get(raffleId)
   const fields = raffleFields(snapshot.raffle, local, pending)
-  const remote = remoteFields(local, snapshot, { userId })
+  // Se confirma dentro de la misma transacción que reemplaza las filas. Si falla, la marca sigue.
+  const remote = { ...remoteFields(local, snapshot, { userId }), needsReconcile: false }
   if (local) await db.raffles.update(raffleId, { ...fields, remote })
   else await db.raffles.add({ id: raffleId, archivedAt: null, ...fields, remote })
 

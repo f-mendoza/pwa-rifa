@@ -14,7 +14,18 @@ export function describeSyncState(sync, { online = true } = {}) {
   }
   if (sync.needsLogin) return { tone: 'warn', label: 'Iniciá sesión para sincronizar', detail: unsent }
   if (!online) return { tone: 'offline', label: 'Sin conexión', detail: unsent }
+  if (sync.syncError) {
+    return {
+      tone: 'warn',
+      label: sync.syncError.kind === 'network' ? 'Sin conexión con la nube' : 'No se pudo sincronizar',
+      detail: unsent ?? 'Tus datos siguen guardados en este teléfono',
+    }
+  }
+  if (sync.needsReconcile) {
+    return { tone: 'pending', label: 'Pendiente de actualizar desde la nube', detail: unsent }
+  }
   if (unsent) return { tone: 'pending', label: unsent, detail: null }
+  if (sync.syncPending || sync.lastSyncAt == null) return { tone: 'pending', label: 'Pendiente de sincronizar', detail: null }
   return { tone: 'ok', label: 'Sincronizado', detail: null }
 }
 

@@ -3,9 +3,21 @@ import { describeConflict, describeSyncState } from '../../src/sync/status.js'
 import { SyncError, syncErrorKind } from '../../src/sync/transport.js'
 import { friendlyError } from '../../src/lib/errors.js'
 
-const base = { status: 'active', pending: 0, needsLogin: false, conflicts: [] }
+const base = { status: 'active', pending: 0, needsLogin: false, conflicts: [], lastSyncAt: 1000 }
 
 describe('describeSyncState', () => {
+  it('no muestra sincronizado si falló la API aunque el navegador tenga internet y no haya pendientes', () => {
+    expect(describeSyncState({ ...base, syncError: { kind: 'network' } })).toMatchObject({
+      tone: 'warn', label: 'Sin conexión con la nube', detail: 'Tus datos siguen guardados en este teléfono',
+    })
+    expect(describeSyncState({ ...base, syncError: { kind: 'server' }, pending: 2 })).toMatchObject({
+      tone: 'warn', label: 'No se pudo sincronizar', detail: '2 cambios sin enviar',
+    })
+    expect(describeSyncState({ ...base, needsReconcile: true })).toMatchObject({ tone: 'pending', label: 'Pendiente de actualizar desde la nube' })
+    expect(describeSyncState({ ...base, lastSyncAt: null })).toMatchObject({ tone: 'pending', label: 'Pendiente de sincronizar' })
+    expect(describeSyncState({ ...base, syncPending: true })).toMatchObject({ tone: 'pending', label: 'Pendiente de sincronizar' })
+  })
+
   it('sincronizado, cambios sin enviar, sin conexión e inicio de sesión', () => {
     expect(describeSyncState(base)).toMatchObject({ tone: 'ok', label: 'Sincronizado' })
     expect(describeSyncState({ ...base, pending: 1 })).toMatchObject({ tone: 'pending', label: '1 cambio sin enviar' })

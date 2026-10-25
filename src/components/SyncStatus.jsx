@@ -102,8 +102,9 @@ export function SyncStatus({ sync, onDismissConflicts, onLogin, onOpenMembers, o
       <Dialog open={open && conflicts.length > 0} onClose={() => setOpen(false)} title="Conflictos">
         <div className="conflicts">
           <p className="muted">
-            Estos cambios hechos en este teléfono no se pudieron guardar en la nube y se deshicieron acá. Lo que ves en la
-            rifa ya es lo que quedó guardado.
+            {sync.needsReconcile
+              ? 'La nube no aceptó estos cambios. Falta actualizar los datos de este teléfono para corregirlos; se volverá a intentar al conectar con la nube.'
+              : 'Estos cambios hechos en este teléfono no se pudieron guardar en la nube y se deshicieron acá. Lo que ves en la rifa ya es lo que quedó guardado.'}
           </p>
           <ul className="conflict-list">
             {conflicts.map((c) => (

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { createStore } from '../../src/db.js'
 import { pendingKeys } from '../../src/sync/local.js'
 import { deleteCloudRaffle, downloadRaffle, fetchReceiptFile, syncRaffle } from '../../src/sync/engine.js'
 import { createFakeServer } from '../../src/sync/fakeServer.js'
-import { device, ofRaffle, outbox, receipt, sharedRaffle, tickets } from './syncHelpers.js'
+import { describeSyncState } from '../../src/sync/status.js'
+import { SyncError } from '../../src/sync/transport.js'
+import { deferred, device, ofRaffle, outbox, receipt, sharedRaffle, tickets } from './syncHelpers.js'
 
 const sync = (phone, raffleId) => syncRaffle(raffleId, phone.transport, { store: phone.store })
 const numbersOf = async (phone, raffleId) => (await tickets(phone.store, raffleId)).map((t) => t.number)
@@ -10,6 +13,126 @@ const personByName = async (phone, raffleId, name) =>
   (await ofRaffle(phone.store.db.people, raffleId)).find((p) => p.name === name)
 
 describe('ciclo básico', () => {
+  it('una pestaña que termina no limpia el pull pendiente de otra', async () => {
+    const { a, b, raffleId } = await sharedRaffle()
+    const secondTab = createStore(a.store.db.name)
+    const uploading = deferred()
+    const finishUpload = deferred()
+    const pulling = deferred()
+    const finishPull = deferred()
+    await a.store.assignNumbers(raffleId, [1], { name: 'Uno' }, { receipt: receipt() })
+    const older = syncRaffle(raffleId, {
+      ...a.transport,
+      uploadReceipt: async (...args) => {
+        uploading.resolve()
+        await finishUpload.promise
+        return a.transport.uploadReceipt(...args)
+      },
+    }, { store: a.store })
+    await uploading.promise
+    await b.store.assignNumbers(raffleId, [3], { name: 'Tres' })
+    await sync(b, raffleId)
+    const saleId = await a.store.assignNumbers(raffleId, [2], { name: 'Dos' })
+    const newer = syncRaffle(raffleId, {
+      ...a.transport,
+      pullChanges: async (...args) => {
+        pulling.resolve()
+        await finishPull.promise
+        return a.transport.pullChanges(...args)
+      },
+    }, { store: secondTab })
+    try {
+      await pulling.promise
+      finishUpload.resolve()
+      await older
+      expect(await outbox(a.store, raffleId)).toEqual([])
+      expect(await a.store.db.uploads.count()).toBe(0)
+      const remote = (await a.store.db.raffles.get(raffleId)).remote
+      expect(remote.syncPending).toBe(true)
+      expect(describeSyncState({ ...remote, pending: 0 }).tone).toBe('pending')
+      expect(await numbersOf(a, raffleId)).toEqual([1, 2])
+
+      // Simula el cierre de la pestaña que esperaba el pull: otro ciclo retoma la rifa inactiva.
+      await a.store.createRaffle({ title: 'Local abierta' })
+      await sync(a, raffleId)
+      expect(await numbersOf(a, raffleId)).toEqual([1, 2, 3])
+      expect((await a.store.db.sales.get(saleId)).seq).toBe(3)
+      expect((await a.store.db.raffles.get(raffleId)).remote.syncPending).toBe(false)
+    } finally {
+      finishUpload.resolve()
+      finishPull.resolve()
+      await Promise.all([older, newer])
+      secondTab.db.close()
+    }
+  })
+
+  it('el error tardío de una pestaña no reemplaza un ciclo ya completado por otra', async () => {
+    const { a, raffleId } = await sharedRaffle()
+    const pulling = deferred()
+    const finishPull = deferred()
+    const older = syncRaffle(raffleId, {
+      ...a.transport,
+      pullChanges: async () => {
+        pulling.resolve()
+        return finishPull.promise
+      },
+    }, { store: a.store }).catch((err) => err)
+    await pulling.promise
+    await sync(a, raffleId)
+    finishPull.reject(new SyncError('network'))
+    expect(await older).toMatchObject({ kind: 'network' })
+    expect((await a.store.db.raffles.get(raffleId)).remote).toMatchObject({ syncPending: false, syncError: null })
+  })
+
+  it('un push tardío vuelve a dejar pendiente su pull aunque otro ciclo haya terminado', async () => {
+    const { a, raffleId } = await sharedRaffle()
+    const pushing = deferred()
+    const finishPush = deferred()
+    const pulling = deferred()
+    const finishPull = deferred()
+    await a.store.assignNumbers(raffleId, [1], { name: 'Uno' })
+    const older = syncRaffle(raffleId, {
+      ...a.transport,
+      pushOps: async (...args) => {
+        pushing.resolve()
+        await finishPush.promise
+        return a.transport.pushOps(...args)
+      },
+      pullChanges: async (...args) => {
+        pulling.resolve()
+        await finishPull.promise
+        return a.transport.pullChanges(...args)
+      },
+    }, { store: a.store })
+    try {
+      await pushing.promise
+      await sync(a, raffleId)
+      await a.store.assignNumbers(raffleId, [2], { name: 'Dos' })
+      finishPush.resolve()
+      await pulling.promise
+      expect(await outbox(a.store, raffleId)).toEqual([])
+      expect((await a.store.db.raffles.get(raffleId)).remote.syncPending).toBe(true)
+    } finally {
+      finishPush.resolve()
+      finishPull.resolve()
+      await older
+    }
+    expect((await a.store.db.raffles.get(raffleId)).remote.syncPending).toBe(false)
+  })
+
+  it('mantiene el ciclo pendiente después del push hasta terminar de aplicar el pull', async () => {
+    const { a, raffleId } = await sharedRaffle()
+    await a.store.assignNumbers(raffleId, [5], { name: 'Juan' })
+    const pullChanges = a.transport.pullChanges
+    a.transport.pullChanges = async (...args) => {
+      expect(await outbox(a.store, raffleId)).toEqual([])
+      expect((await a.store.db.raffles.get(raffleId)).remote.syncPending).toBe(true)
+      return pullChanges(...args)
+    }
+    await sync(a, raffleId)
+    expect((await a.store.db.raffles.get(raffleId)).remote).toMatchObject({ syncPending: false, syncError: null })
+  })
+
   it('lo que vende un teléfono le llega al otro, con el seq del servidor y quién vendió', async () => {
     const { server, a, b, raffleId } = await sharedRaffle()
     await b.store.assignNumbers(raffleId, [7, 8], { name: 'Juan', phone: '1' })
@@ -51,6 +174,77 @@ describe('ciclo básico', () => {
 })
 
 describe('conflictos', () => {
+  it('retoma el snapshot tras un corte y una reapertura, aunque se hayan descartado los avisos', async () => {
+    const { server, a, b, raffleId } = await sharedRaffle()
+    await a.store.assignNumbers(raffleId, [7], { name: 'Juan' })
+    await sync(a, raffleId)
+    await b.store.assignNumbers(raffleId, [7, 9], { name: 'Pedro' })
+    const getSnapshot = b.transport.getSnapshot
+    b.transport.getSnapshot = async () => { throw new SyncError('network') }
+    await expect(sync(b, raffleId)).rejects.toMatchObject({ kind: 'network' })
+    expect(await outbox(b.store, raffleId)).toEqual([])
+    expect((await b.store.db.raffles.get(raffleId)).remote).toMatchObject({ needsReconcile: true, syncError: { kind: 'network' } })
+    await b.store.dismissConflicts(raffleId)
+    b.store.db.close()
+    await b.store.db.open()
+    b.transport.getSnapshot = getSnapshot
+
+    // Una venta nueva mientras se recupera no debe perderse con el reemplazo completo.
+    b.transport.getSnapshot = async (...args) => {
+      const snapshot = await getSnapshot(...args)
+      await b.store.assignNumbers(raffleId, [10], { name: 'Caro' })
+      return snapshot
+    }
+    await sync(b, raffleId)
+    expect(await numbersOf(b, raffleId)).toEqual([7, 10])
+    expect(await ofRaffle(b.store.db.sales, raffleId)).toHaveLength(2)
+    expect(await personByName(b, raffleId, 'Pedro')).toBeUndefined()
+    expect(await outbox(b.store, raffleId)).toHaveLength(1)
+    expect((await b.store.db.raffles.get(raffleId)).remote).toMatchObject({ needsReconcile: false, syncError: null })
+    b.transport.getSnapshot = getSnapshot
+    await sync(b, raffleId)
+    expect(server.inspect(raffleId).numbers.map((n) => n.number)).toEqual([7, 10])
+  })
+
+  it('conserva la reconciliación si falla un lote posterior al que tuvo rechazos', async () => {
+    const { a, b, raffleId } = await sharedRaffle()
+    await a.store.assignNumbers(raffleId, [7], { name: 'Juan' })
+    await sync(a, raffleId)
+    await b.store.assignNumbers(raffleId, [7, 9], { name: 'Pedro' })
+    for (let i = 0; i < 100; i++) await b.store.saveSharePrefs(raffleId, { palette: i % 2 ? 'menta' : 'limon' })
+    expect(await outbox(b.store, raffleId)).toHaveLength(101)
+    const pushOps = b.transport.pushOps
+    let batches = 0
+    b.transport.pushOps = async (...args) => {
+      if (++batches === 2) throw new SyncError('server')
+      return pushOps(...args)
+    }
+    await expect(sync(b, raffleId)).rejects.toMatchObject({ kind: 'server' })
+    expect((await b.store.db.raffles.get(raffleId)).remote.needsReconcile).toBe(true)
+    expect(await outbox(b.store, raffleId)).toHaveLength(1)
+    b.transport.pushOps = pushOps
+    await sync(b, raffleId)
+    expect(await numbersOf(b, raffleId)).toEqual([7])
+    expect(await ofRaffle(b.store.db.sales, raffleId)).toHaveLength(1)
+    expect((await b.store.db.raffles.get(raffleId)).remote.needsReconcile).toBe(false)
+  })
+
+  it('no da por reconciliado un snapshot cuya transacción local falla', async () => {
+    const { a, b, raffleId } = await sharedRaffle()
+    await a.store.assignNumbers(raffleId, [7], { name: 'Juan' })
+    await sync(a, raffleId)
+    await b.store.assignNumbers(raffleId, [7, 9], { name: 'Pedro' })
+    const getSnapshot = b.transport.getSnapshot
+    b.transport.getSnapshot = async (...args) => ({ ...await getSnapshot(...args), people: null })
+    await expect(sync(b, raffleId)).rejects.toThrow()
+    expect((await b.store.db.raffles.get(raffleId)).remote.needsReconcile).toBe(true)
+    expect(await numbersOf(b, raffleId)).toEqual([7, 9])
+    b.transport.getSnapshot = getSnapshot
+    await sync(b, raffleId)
+    expect(await numbersOf(b, raffleId)).toEqual([7])
+    expect((await b.store.db.raffles.get(raffleId)).remote.needsReconcile).toBe(false)
+  })
+
   it('dos teléfonos venden el mismo número sin conexión: uno queda con un conflicto y se corrige', async () => {
     const { server, a, b, raffleId } = await sharedRaffle()
     a.transport.setOnline(false)
@@ -265,6 +459,34 @@ describe('comprobantes', () => {
 })
 
 describe('errores del transporte', () => {
+  it('conserva el error del pull sin operaciones pendientes hasta completar la recuperación', async () => {
+    const { a, raffleId } = await sharedRaffle()
+    a.transport.setOnline(false)
+    await expect(sync(a, raffleId)).rejects.toMatchObject({ kind: 'network' })
+    expect(await outbox(a.store, raffleId)).toEqual([])
+    a.store.db.close()
+    await a.store.db.open()
+    expect((await a.store.db.raffles.get(raffleId)).remote.syncError).toEqual({ kind: 'network' })
+    a.transport.setOnline(true)
+    await sync(a, raffleId)
+    expect((await a.store.db.raffles.get(raffleId)).remote.syncError).toBeNull()
+  })
+
+  it('no limpia el error hasta que también se hayan subido los comprobantes', async () => {
+    const { a, raffleId } = await sharedRaffle()
+    await a.store.assignNumbers(raffleId, [3], { name: 'Juan' }, { receipt: receipt() })
+    const uploadReceipt = a.transport.uploadReceipt
+    a.transport.uploadReceipt = async () => { throw new SyncError('network') }
+    await expect(sync(a, raffleId)).rejects.toMatchObject({ kind: 'network' })
+    expect(await outbox(a.store, raffleId)).toEqual([])
+    expect(await a.store.db.uploads.count()).toBe(1)
+    expect((await a.store.db.raffles.get(raffleId)).remote.syncError).toEqual({ kind: 'network' })
+    a.transport.uploadReceipt = uploadReceipt
+    await sync(a, raffleId)
+    expect(await a.store.db.uploads.count()).toBe(0)
+    expect((await a.store.db.raffles.get(raffleId)).remote.syncError).toBeNull()
+  })
+
   it('401: se pide iniciar sesión y el outbox queda intacto', async () => {
     const { server, a, raffleId } = await sharedRaffle()
     await a.store.assignNumbers(raffleId, [4], { name: 'Juan' })

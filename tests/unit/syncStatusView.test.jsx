@@ -17,9 +17,17 @@ beforeAll(() => {
   }
 })
 
-const sync = (patch = {}) => ({ status: 'active', role: 'owner', pending: 0, conflicts: [], needsLogin: false, ...patch })
+const sync = (patch = {}) => ({ status: 'active', role: 'owner', pending: 0, conflicts: [], needsLogin: false, lastSyncAt: 1000, ...patch })
 
 describe('SyncStatus', () => {
+  it('explica que el conflicto todavía no se corrigió si está pendiente la reconciliación', async () => {
+    const conflicts = [{ id: 1, type: 'numbers.assign', payload: { numbers: [7] }, message: 'Número ocupado', createdAt: 1000 }]
+    render(<SyncStatus sync={sync({ needsReconcile: true, conflicts })} onDismissConflicts={async () => true} />)
+    await userEvent.click(screen.getByRole('button', { name: /Hay conflictos/ }))
+    expect(screen.getByText(/Falta actualizar los datos de este teléfono/)).toBeInTheDocument()
+    expect(screen.queryByText(/se deshicieron acá/)).toBeNull()
+  })
+
   it('en una rifa local no muestra nada', () => {
     const { container } = render(<SyncStatus sync={null} onDismissConflicts={() => {}} />)
     expect(container).toBeEmptyDOMElement()

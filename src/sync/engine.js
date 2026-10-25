@@ -1,4 +1,5 @@
 import { store as defaultStore, hasReceiptFile, receiptBlob } from '../db.js'
+import { newId } from '../lib/ids.js'
 import { applyChangeRows, applySnapshotRows, pendingKeys } from './local.js'
 import { MAX_OPS_PER_BATCH, SyncError, explainSyncError, isSyncError } from './transport.js'
 
@@ -6,9 +7,10 @@ import { MAX_OPS_PER_BATCH, SyncError, explainSyncError, isSyncError } from './t
  * Motor de sincronización de una rifa en la nube contra un `transport` (ver transport.js).
  * Un ciclo:
  *   1. push de las operaciones pendientes, en orden y en lotes; las rechazadas pasan a `conflicts`;
- *   2. si hubo rechazos (o es la primera vez), snapshot completo; si no, pull incremental;
+ *   2. si hay una reconciliación pendiente (o es la primera vez), snapshot completo; si no, pull incremental;
  *   3. subida de los archivos de comprobantes cuyas ventas ya están en el servidor;
- *   4. queda guardado `syncedVersion`, `role`, `ranges` y `lastSyncAt` (lo hace el paso 2).
+ *   4. confirma el ciclo, limpia el error y actualiza `lastSyncAt`;
+ *      `syncedVersion`, `role` y `ranges` se guardan con el pull.
  * Las rifas locales no hacen nada de red.
  */
 
@@ -27,26 +29,35 @@ export async function syncRaffle(raffleId, transport, { store = defaultStore } =
   if (!raffle) return { skipped: 'missing' }
   if (!raffle.remote) return { skipped: 'local' }
   if (raffle.remote.status && raffle.remote.status !== 'active') return { skipped: raffle.remote.status }
+  const cycleId = newId()
   try {
-    const { pushed, rejected } = await pushPending(db, raffleId, transport)
+    // Si se cierra la página tras confirmar el push, todavía queda pendiente completar el pull.
+    await patchRemote(db, raffleId, { syncPending: true, syncCycleId: cycleId })
+    const { pushed, rejected } = await pushPending(db, raffleId, transport, cycleId)
+    const current = await db.raffles.get(raffleId)
     let version
-    if (rejected > 0 || raffle.remote.syncedVersion == null) {
+    if (current.remote.needsReconcile || current.remote.syncedVersion == null) {
       // Reconciliarse con el estado completo deshace los cambios optimistas rechazados.
       const snapshot = await transport.getSnapshot(raffleId)
       // Las funciones de la transacción son async: así Dexie sigue los await nativos de adentro.
       await db.transaction('rw', syncTables(db), async () => applySnapshotRows(db, snapshot))
       version = snapshot.version
     } else {
-      const changes = await transport.pullChanges(raffleId, raffle.remote.syncedVersion)
+      const changes = await transport.pullChanges(raffleId, current.remote.syncedVersion)
       await db.transaction('rw', syncTables(db), async () => applyChangeRows(db, raffleId, changes))
       version = changes.version
     }
     const after = await db.raffles.get(raffleId)
     const uploaded = after?.remote?.status === 'active' ? await uploadReceipts(db, raffleId, transport) : 0
+    // Otra pestaña puede haber iniciado un ciclo o confirmado un push mientras ésta esperaba.
+    await patchRemote(db, raffleId, { syncPending: false, syncCycleId: null, syncError: null, lastSyncAt: Date.now() }, cycleId)
     return { pushed, rejected, uploaded, version }
   } catch (err) {
     if (isSyncError(err) && (err.kind === 'forbidden' || err.kind === 'gone')) {
       await markStatus(db, raffleId, err.kind === 'gone' ? 'deleted' : 'revoked')
+    } else {
+      // Persistido por rifa: la UI de todas las pestañas lo ve, incluso después de recargar.
+      await patchRemote(db, raffleId, { syncError: { kind: isSyncError(err) ? err.kind : 'server' } }, cycleId)
     }
     throw err
   }
@@ -54,18 +65,24 @@ export async function syncRaffle(raffleId, transport, { store = defaultStore } =
 
 /** Marca una rifa en la nube como borrada (`deleted`) o sin acceso (`revoked`). */
 export function markStatus(db, raffleId, status) {
+  return patchRemote(db, raffleId, { status })
+}
+
+function patchRemote(db, raffleId, patch, cycleId) {
   return db.raffles
     .where('id')
     .equals(raffleId)
     .modify((raffle) => {
-      if (raffle.remote) raffle.remote = { ...raffle.remote, status }
+      if (raffle.remote && (cycleId === undefined || raffle.remote.syncCycleId === cycleId)) {
+        raffle.remote = { ...raffle.remote, ...patch }
+      }
     })
 }
 
-const REJECTED_FALLBACK = 'El servidor no aceptó este cambio y se deshizo en este teléfono.'
+const REJECTED_FALLBACK = 'El servidor no aceptó este cambio. Se corregirá al actualizar los datos desde la nube.'
 
 /** Envía el outbox de la rifa en orden. Aceptadas → salen; rechazadas → salen y quedan como conflicto. */
-async function pushPending(db, raffleId, transport) {
+async function pushPending(db, raffleId, transport, cycleId) {
   let pushed = 0
   let rejected = 0
   for (;;) {
@@ -83,7 +100,12 @@ async function pushPending(db, raffleId, transport) {
     }
     const results = new Map((response?.results ?? []).map((r) => [r.opId, r]))
     const unanswered = rows.filter((row) => !results.has(row.opId))
-    await db.transaction('rw', db.outbox, db.conflicts, async () => {
+    await db.transaction('rw', db.raffles, db.outbox, db.conflicts, async () => {
+      // Un push que responde tarde también debe dejar su pull pendiente, aunque otro ciclo
+      // ya haya terminado. La marca y la retirada del outbox se confirman juntas.
+      if (unanswered.length < rows.length) {
+        await patchRemote(db, raffleId, { syncPending: true, syncCycleId: cycleId })
+      }
       for (const row of rows) {
         const result = results.get(row.opId)
         if (!result) continue
@@ -93,6 +115,9 @@ async function pushPending(db, raffleId, transport) {
           continue
         }
         rejected++
+        // La obligación de reconciliar se guarda junto con el rechazo: sobrevive a un corte
+        // en un lote posterior, al fallo del snapshot y al cierre de la aplicación.
+        await patchRemote(db, raffleId, { needsReconcile: true })
         await db.conflicts.add({
           raffleId,
           opId: row.opId,

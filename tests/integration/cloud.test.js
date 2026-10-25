@@ -5,6 +5,7 @@ import { createStore } from '../../src/db.js'
 import { createApiClient } from '../../src/sync/api.js'
 import { deleteCloudRaffle, downloadRaffle, fetchReceiptFile, syncRaffle } from '../../src/sync/engine.js'
 import { createSession } from '../../src/sync/session.js'
+import { SyncError } from '../../src/sync/transport.js'
 
 /**
  * Ciclo completo contra la API real (Laravel, levantada por globalSetup.js) con el transporte HTTP
@@ -128,6 +129,25 @@ describe('integración con la API real', () => {
     await syncRaffle(raffleId, ana.transport, { store: ana.store })
     await syncRaffle(raffleId, beto.transport, { store: beto.store })
     expect(await names(beto.store, raffleId)).toEqual({ 7: 'Juan', 20: 'Dani' })
+  })
+
+  it('reconcilia tras perder la conexión al snapshot con el outbox ya vacío', async () => {
+    const id = await ana.store.createCloudRaffle({ title: 'Recuperación' }, ana.transport)
+    const { token } = await ana.transport.createInvitation(id, { role: 'seller' })
+    await beto.transport.acceptInvitation(token)
+    await downloadRaffle(id, beto.transport, { store: beto.store })
+    await ana.store.assignNumbers(id, [7], { name: 'Juan' })
+    await syncRaffle(id, ana.transport, { store: ana.store })
+    await beto.store.assignNumbers(id, [7, 9], { name: 'Pedro' })
+    const interrupted = { ...beto.transport, getSnapshot: async () => { throw new SyncError('network') } }
+    await expect(syncRaffle(id, interrupted, { store: beto.store })).rejects.toMatchObject({ kind: 'network' })
+    expect(await beto.store.db.outbox.count()).toBe(0)
+    beto.store.db.close()
+    await beto.store.db.open()
+    await syncRaffle(id, beto.transport, { store: beto.store })
+    expect(await names(beto.store, id)).toEqual({ 7: 'Juan' })
+    expect(await beto.store.db.sales.where('raffleId').equals(id).count()).toBe(1)
+    expect((await beto.store.db.raffles.get(id)).remote).toMatchObject({ needsReconcile: false, syncPending: false, syncError: null })
   })
 
   it('talonario: la API lo guarda, el pull lo trae y la app avisa antes de vender afuera', async () => {

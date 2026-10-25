@@ -143,11 +143,20 @@ Cualquier operación de un `viewer`, o de un tipo desconocido, se rechaza con `f
 - `sales.createdBy` (`{ id, name }` o `null` en rifas locales). `receipts` que vinieron del servidor sin archivo: `{ …meta, remote: true }` sin `blob`/`buffer`; se bajan al abrirlos.
 - `settings`: `auth = { token, user }` (del dispositivo, no se sincroniza).
 
+Estado de recuperación persistido en `raffles.remote` (sólo del dispositivo):
+
+- `needsReconcile`: se activa en la misma transacción que retira una operación rechazada del outbox y registra el conflicto. Sólo se limpia dentro de la transacción que aplica un snapshot completo. Descartar el aviso de conflicto no cancela la reconciliación.
+- `syncPending`: se activa al iniciar un ciclo y se limpia al completar push, pull y subidas. Permite retomar un ciclo interrumpido después de confirmar el push, aunque ya no quede outbox.
+- `syncCycleId`: identifica el ciclo dueño de la marca pendiente. Se actualiza al iniciar y al confirmar cada lote de push, en la misma transacción que retira las operaciones. Sólo ese ciclo puede limpiar la marca o guardar su error: una respuesta tardía de otra pestaña no cancela la recuperación pendiente ni reemplaza un resultado más reciente.
+- `syncError`: último error del ciclo (`{ kind }`), o `null` después de completar uno correctamente. La UI lo consulta por rifa y lo ve también tras recargar o desde otras pestañas; tener conexión en el navegador no garantiza que la API responda.
+
+El manager incluye las rifas con cualquiera de estos estados pendientes aunque no estén abiertas ni tengan operaciones o archivos en cola. No se requiere migración de esquema: los campos ausentes equivalen a `false`/`null`.
+
 ### Ciclo de sync de una rifa
 
 1. **Push** de las operaciones pendientes en orden, en lotes. Aceptadas → salen del outbox. Rechazadas → salen del outbox y se guardan en `conflicts`.
-2. Si hubo **algún rechazo**, el cliente se reconcilia con `GET /snapshot`: reemplaza todas las filas locales de la rifa por las del servidor, salvo las entidades con operaciones aún pendientes (así se deshacen los cambios optimistas rechazados). Si no, **pull** incremental con `changes?since=syncedVersion`: reemplaza o borra filas, aplica `aliases` (reescribe referencias y borra la persona vieja), y **no toca** entidades con operaciones pendientes (`person:<id>`, `sale:<id>`, `number:<n>`, `receipt:<saleId>`, `raffle`).
+2. Si hay **reconciliación pendiente** (por un rechazo de este ciclo o de uno interrumpido), el cliente se reconcilia con `GET /snapshot`: reemplaza todas las filas locales de la rifa por las del servidor, salvo las entidades con operaciones aún pendientes (así se deshacen los cambios optimistas rechazados). Si no, **pull** incremental con `changes?since=syncedVersion`: reemplaza o borra filas, aplica `aliases` (reescribe referencias y borra la persona vieja), y **no toca** entidades con operaciones pendientes (`person:<id>`, `sale:<id>`, `number:<n>`, `receipt:<saleId>`, `raffle`).
 3. Sube la cola de comprobantes (`uploads`) cuyas ventas ya existen en el servidor.
-4. Guarda `syncedVersion`, `role`, `ranges`, `lastSyncAt`.
+4. Confirma el ciclo limpiando `syncPending` y `syncError` y actualizando `lastSyncAt`. `syncedVersion`, `role` y `ranges` se guardan en la transacción del pull. La UI sólo indica «Sincronizado» si hubo una sincronización confirmada, sin cola, error ni recuperación pendiente.
 
-Errores del transporte (`SyncError.kind`): `network` y `server` → reintento con espera exponencial; `auth` (401) → se pide iniciar sesión sin perder el outbox; `forbidden` (403) → `remote.status = "revoked"`; `gone` (404/410) → `remote.status = "deleted"`. En los dos últimos la UI ofrece guardar una copia local o quitarla del dispositivo.
+Errores del transporte (`SyncError.kind`): `network` y `server` → reintento con espera exponencial por rifa, sin bloquear las demás ni reiniciar la espera al sincronizar otra correctamente; `auth` (401) → se pide iniciar sesión sin perder el outbox; `forbidden` (403) → `remote.status = "revoked"`; `gone` (404/410) → `remote.status = "deleted"`. En los dos últimos la UI ofrece guardar una copia local o quitarla del dispositivo.
