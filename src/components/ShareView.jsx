@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_SHARE, saveSharePrefs } from '../db.js'
 import { TEXT_FONTS, TITLE_FONTS, textFont, titleFont } from '../lib/fonts.js'
 import { IMAGE_FORMATS, IMAGE_MODES } from '../lib/shareImage.js'
+import { permissionsFor } from '../lib/permissions.js'
 import { canCopyImage } from '../lib/share.js'
 import { IMAGE_COLOR_FIELDS, THEMES, contrast, normalizeImageColors, resolveImagePalette, themeById } from '../lib/themes.js'
 import { ImageSwatch } from './Swatches.jsx'
@@ -29,6 +30,8 @@ export function ShareView({ data, image, onShare, onDownload, onCopyImage, onCop
   const { share, available, config } = data
   const { ready } = image
   const { width, height } = IMAGE_FORMATS[share.format] ?? IMAGE_FORMATS.story
+  // Quien sólo mira una rifa en la nube comparte la imagen tal como está, sin cambiar su estilo.
+  const canEdit = permissionsFor(data).share
 
   return (
     <section className="panel share" aria-labelledby="share-title">
@@ -40,18 +43,22 @@ export function ShareView({ data, image, onShare, onDownload, onCopyImage, onCop
           Se actualiza sola con cada cambio. {available.length} de {config.total} números disponibles.
         </p>
 
-        <Choice
-          label="Qué mostrar"
-          options={IMAGE_MODES}
-          value={share.mode}
-          onChange={(mode) => saveSharePrefs({ ...share, mode })}
-        />
-        <Choice
-          label="Formato"
-          options={IMAGE_FORMATS}
-          value={share.format}
-          onChange={(format) => saveSharePrefs({ ...share, format })}
-        />
+        <fieldset className="plain-group" disabled={!canEdit}>
+          <legend className="visually-hidden">Opciones de la imagen</legend>
+          <Choice
+            label="Qué mostrar"
+            options={IMAGE_MODES}
+            value={share.mode}
+            onChange={(mode) => saveSharePrefs(data.raffle.id, { ...share, mode })}
+          />
+          <Choice
+            label="Formato"
+            options={IMAGE_FORMATS}
+            value={share.format}
+            onChange={(format) => saveSharePrefs(data.raffle.id, { ...share, format })}
+          />
+        </fieldset>
+        {!canEdit && <p className="field-hint">Sólo podés ver esta rifa: la imagen se comparte con el estilo que eligieron.</p>}
 
         <div className="share-actions">
           <button type="button" className="btn btn-primary btn-lg" onClick={onShare} disabled={!ready}>
@@ -88,15 +95,17 @@ export function ShareView({ data, image, onShare, onDownload, onCopyImage, onCop
         )}
       </figure>
 
-      <ImageStyle share={share} appTheme={data.appearance.theme} image={image} ratio={`${width} / ${height}`} />
+      {canEdit && (
+        <ImageStyle raffleId={data.raffle.id} share={share} appTheme={data.appearance.theme} image={image} ratio={`${width} / ${height}`} />
+      )}
     </section>
   )
 }
 
 /** Colores y letras de la imagen. Plegado: compartir sigue estando a un toque. */
-function ImageStyle({ share, appTheme, image, ratio }) {
+function ImageStyle({ raffleId, share, appTheme, image, ratio }) {
   const palette = resolveImagePalette(share, appTheme)
-  const save = (patch) => saveSharePrefs({ ...share, ...patch })
+  const save = (patch) => saveSharePrefs(raffleId, { ...share, ...patch })
   const isDefault =
     share.palette === DEFAULT_SHARE.palette &&
     share.titleFont === DEFAULT_SHARE.titleFont &&

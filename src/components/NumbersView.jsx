@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { personKey } from '../db.js'
+import { permissionsFor } from '../lib/permissions.js'
+import { formatRanges } from '../lib/ranges.js'
 
 const FILTERS = [
   { id: 'all', label: 'Todos' },
@@ -9,6 +11,7 @@ const FILTERS = [
 
 export function NumbersView({ data, selected, onToggle, onOpenTicket }) {
   const { config, ticketByNumber, peopleById, available, takenCount } = data
+  const perms = permissionsFor(data)
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
 
@@ -62,7 +65,15 @@ export function NumbersView({ data, selected, onToggle, onOpenTicket }) {
       </div>
 
       <p className="hint">
-        Tocá los números libres para elegirlos y asignarlos juntos. Tocá uno tomado para ver quién lo tiene.
+        {!perms.sell
+          ? 'Sólo podés ver esta rifa. Tocá un número tomado para ver quién lo tiene.'
+          : 'Tocá los números libres para elegirlos y asignarlos juntos. Tocá uno tomado para ver quién lo tiene.'}
+        {perms.sell && perms.ranges && (
+          <>
+            {' '}
+            <strong>Tu talonario: {formatRanges(perms.ranges)}.</strong> Los demás números no los podés vender.
+          </>
+        )}
       </p>
 
       {numbers.length === 0 ? (
@@ -74,14 +85,22 @@ export function NumbersView({ data, selected, onToggle, onOpenTicket }) {
             const person = ticket && peopleById.get(ticket.participantId)
             const isSelected = selected.has(n)
             const stamp = justTaken.get(n)
+            // Un libre que no se puede vender (sólo lectura o fuera del talonario) no se elige.
+            const locked = !ticket && !perms.canSellNumber(n)
+            const outside = locked && perms.sell
             return (
               <li key={n}>
                 <button
                   type="button"
-                  className={`cell ${ticket ? 'is-taken' : ''} ${isSelected ? 'is-selected' : ''} ${stamp != null ? 'just-taken' : ''}`}
+                  className={`cell ${ticket ? 'is-taken' : ''} ${isSelected ? 'is-selected' : ''} ${stamp != null ? 'just-taken' : ''} ${locked ? 'is-locked' : ''}`}
                   style={stamp ? { '--i': stamp } : undefined}
-                  aria-pressed={ticket ? undefined : isSelected}
-                  aria-label={ticket ? `Número ${n}, tomado por ${person?.name ?? 'alguien'}` : `Número ${n}, disponible`}
+                  disabled={locked}
+                  aria-pressed={ticket || locked ? undefined : isSelected}
+                  aria-label={
+                    ticket
+                      ? `Número ${n}, tomado por ${person?.name ?? 'alguien'}`
+                      : `Número ${n}, disponible${outside ? ', fuera de tu talonario' : ''}`
+                  }
                   title={person?.name}
                   onClick={() => (ticket ? onOpenTicket(n) : onToggle(n))}
                 >
@@ -103,6 +122,11 @@ export function NumbersView({ data, selected, onToggle, onOpenTicket }) {
         <li>
           <span className="swatch is-taken" /> Tomado
         </li>
+        {perms.sell && perms.ranges && (
+          <li>
+            <span className="swatch is-locked" /> Fuera de tu talonario
+          </li>
+        )}
       </ul>
     </section>
   )

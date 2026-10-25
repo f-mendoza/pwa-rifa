@@ -66,3 +66,27 @@ export async function copyText(text) {
   area.remove()
   if (!ok) throw new Error('No se pudo copiar la lista en este navegador.')
 }
+
+/** Link de WhatsApp con el texto listo para mandar (elige el contacto la persona). */
+export function whatsappUrl(text) {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`
+}
+
+/**
+ * Comparte un texto (p. ej. un link de invitación): con el menú nativo de compartir si existe
+ * (ahí aparece WhatsApp); si no, abre WhatsApp directamente.
+ * @returns {Promise<'shared'|'cancelled'|'whatsapp'>}
+ */
+export async function shareText(text, { title } = {}) {
+  if (navigator.share) {
+    try {
+      await navigator.share(title ? { title, text } : { text })
+      return 'shared'
+    } catch (err) {
+      if (err?.name === 'AbortError') return 'cancelled'
+      // NotAllowedError u otro: mejor WhatsApp que nada.
+    }
+  }
+  window.open(whatsappUrl(text), '_blank', 'noopener')
+  return 'whatsapp'
+}

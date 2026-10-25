@@ -31,14 +31,28 @@ import './index.css'
 import App from './App.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { applyTheme, cachedTheme } from './lib/themes.js'
+import { installCloud } from './sync/cloud.js'
 
 // Antes del primer pintado: así la app no aparece un instante con otro tema mientras lee la base.
 applyTheme(cachedTheme())
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+// La nube: la API real (VITE_API_URL) o, sólo en desarrollo, `/?nube-falsa`, un servidor en
+// memoria (ver sync/dev.js; `/?nube-falsa=sin-sesion` arranca sin sesión). Las rifas locales no
+// la necesitan: si no carga, la app arranca igual.
+const fakeCloud = import.meta.env.DEV ? new URLSearchParams(location.search).get('nube-falsa') : null
+const cloud =
+  fakeCloud !== null
+    ? import('./sync/dev.js').then((m) => m.installFakeCloud({ signedIn: fakeCloud !== 'sin-sesion' }))
+    : installCloud()
+
+cloud
+  .catch((err) => console.error('No se pudo preparar la nube', err))
+  .finally(() => {
+    createRoot(document.getElementById('root')).render(
+      <StrictMode>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </StrictMode>,
+    )
+  })

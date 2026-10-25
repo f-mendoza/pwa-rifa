@@ -29,8 +29,11 @@ export function Tabs({ tabs, current, onChange }) {
   // mira el contenedor: la pestaña activa cambia de ancho al pasar a negrita y eso no tiene que
   // cortar el deslizamiento.
   useEffect(() => {
+    // Se guardan al montar: al desmontar (p. ej. al cambiar de rifa) el observer puede avisar
+    // una última vez después de que React vació las refs y antes de esta limpieza.
     const nav = navRef.current
-    const place = () => placeIndicator(nav, indicatorRef.current, false)
+    const indicator = indicatorRef.current
+    const place = () => placeIndicator(nav, indicator, false)
     let width = nav.clientWidth
     const observer = new ResizeObserver(() => {
       if (nav.clientWidth === width) return

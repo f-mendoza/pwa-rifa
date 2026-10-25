@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { personKey } from '../db.js'
 import { usePagination } from '../hooks/usePagination.js'
 import { formatMoney, plural } from '../lib/format.js'
+import { permissionsFor } from '../lib/permissions.js'
 import { ContactLinks } from './ContactLinks.jsx'
 import { Pagination } from './Pagination.jsx'
 
@@ -10,6 +11,7 @@ const PAGE_SIZE = 9
 
 export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
   const [query, setQuery] = useState('')
+  const canEdit = permissionsFor(data).edit
 
   const people = useMemo(() => {
     const q = query.trim()
@@ -73,9 +75,11 @@ export function ParticipantsView({ data, onOpenTicket, onEditPerson }) {
                     {p.referrer && ` · referido por ${p.referrer}`}
                   </p>
                 </div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onEditPerson(p.id)}>
-                  Editar
-                </button>
+                {canEdit && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => onEditPerson(p.id)}>
+                    Editar
+                  </button>
+                )}
               </div>
               <ContactLinks person={p} />
               <ul className="chips" aria-label={`Números de ${p.name}`}>

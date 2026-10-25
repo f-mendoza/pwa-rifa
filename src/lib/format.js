@@ -46,6 +46,17 @@ export function formatDateTime(timestamp) {
   return dateTime.format(timestamp)
 }
 
+const date = new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
+
+export function formatDate(timestamp) {
+  return date.format(timestamp)
+}
+
+/** Número de comprobante para mostrar: en una rifa en la nube es provisorio hasta que lo confirma el servidor. */
+export function saleLabel(sale) {
+  return `#${sale.seq}${sale.provisional ? ' (provisorio)' : ''}`
+}
+
 export function plural(count, one, many) {
   return `${count} ${count === 1 ? one : many}`
 }
@@ -56,6 +67,24 @@ export function todayStamp() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+/** "Club Atenas 2026" → "club-atenas-2026", para nombres de archivo. */
+export function slug(text) {
+  return String(text ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/, '')
+}
+
+/** "rifa-respaldo-club-atenas-2026-10-25.json". Con el título por defecto no se repite "rifa". */
+export function exportFileName(kind, title, extension) {
+  const name = slug(title)
+  return ['rifa', kind, name !== 'rifa' && name, todayStamp()].filter(Boolean).join('-') + `.${extension}`
+}
+
 /** Mensaje de texto plano con los disponibles, para pegar en WhatsApp junto a la imagen. */
 export function availableMessage(config, available) {
   const title = (config.title || 'Rifa').toUpperCase()
@@ -64,4 +93,15 @@ export function availableMessage(config, available) {
   if (config.price > 0) lines.push(`${formatMoney(config.price)} ${packPhrase(config)}`.trim())
   if (config.drawText) lines.push(config.drawText)
   return lines.join('\n\n')
+}
+
+/**
+ * Quién hizo una venta de una rifa en la nube: «vos» si fue la cuenta de este teléfono.
+ * @param {{ id: number, name: string }|null} createdBy
+ * @param {{ id: number }|null} [user] la cuenta con sesión
+ */
+export function sellerName(createdBy, user) {
+  if (!createdBy) return ''
+  if (user && createdBy.id === user.id) return 'vos'
+  return createdBy.name || 'otra persona'
 }

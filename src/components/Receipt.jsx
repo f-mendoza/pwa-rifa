@@ -46,7 +46,52 @@ function BlobImage({ blob, alt }) {
   return <img ref={ref} alt={alt} />
 }
 
-export function ReceiptView({ receipt, label }) {
+/**
+ * Comprobante que vino de la nube sin el archivo: se ve la miniatura (si tiene) y se puede bajar
+ * cuando hay quien lo baje (`onDownload`).
+ */
+function RemoteReceipt({ receipt, label, onDownload }) {
+  const [busy, setBusy] = useState(false)
+  const pending = receipt.hasFile === false
+  return (
+    <figure className="receipt-view is-remote">
+      <div className="receipt-remote">
+        {receipt.thumb ? (
+          <img src={receipt.thumb} alt={label} />
+        ) : (
+          <span className="receipt-file">
+            <FileIcon />
+            {receipt.name || 'Comprobante'}
+          </span>
+        )}
+      </div>
+      <figcaption className="muted">
+        {receipt.name} · {formatBytes(receipt.size ?? 0)} ·{' '}
+        {pending ? 'todavía no se subió desde el otro teléfono' : 'en la nube, sin descargar'}
+      </figcaption>
+      {onDownload && !pending && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await onDownload()
+            } finally {
+              setBusy(false)
+            }
+          }}
+        >
+          {busy ? 'Descargando…' : 'Descargar'}
+        </button>
+      )}
+    </figure>
+  )
+}
+
+export function ReceiptView({ receipt, label, onDownload }) {
+  if (!receipt.blob) return <RemoteReceipt receipt={receipt} label={label} onDownload={onDownload} />
   const isImage = receipt.type.startsWith('image/')
   return (
     <figure className="receipt-view">

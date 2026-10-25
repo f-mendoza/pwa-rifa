@@ -79,6 +79,44 @@
   line-height: 0.88;
 }
 
+/* El título abre "Mis rifas": se ve igual que antes, con un chevron chico al final */
+.logo-switch {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.logo-switch svg {
+  display: inline-block;
+  width: 0.34em;
+  height: 0.34em;
+  margin-left: 0.08em;
+  vertical-align: 0.12em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.7;
+  transition: transform var(--dur) var(--ease), opacity 0.15s;
+}
+
+@media (hover: hover) {
+  .logo-switch:hover svg {
+    opacity: 1;
+    transform: translateY(0.04em);
+  }
+}
+
 .brand-sub {
   margin-top: 10px;
   max-width: 46ch;
@@ -104,6 +142,151 @@
   border: 1px solid var(--note-line);
   font-size: 14px;
   color: var(--ink-2);
+}
+
+/* ---------- Sincronización (sólo rifas en la nube) ---------- */
+
+.sync-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px var(--gutter) 0;
+}
+
+.sync-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0;
+  padding: 4px 12px 4px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  animation: reveal var(--dur) var(--ease-out-expo);
+}
+
+.sync-state svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sync-state.is-ok svg {
+  color: var(--success);
+}
+
+.sync-state.is-pending svg {
+  color: var(--accent-strong);
+}
+
+.sync-state.is-warn,
+.sync-state.is-offline {
+  background: var(--warn-wash);
+  border-color: transparent;
+  color: var(--warn-ink);
+}
+
+.sync-state.is-error {
+  background: var(--danger-wash);
+  border-color: transparent;
+  color: var(--danger);
+}
+
+.sync-detail {
+  font-weight: 500;
+}
+
+.sync-conflicts {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1.5px solid var(--danger);
+  border-radius: 99px;
+  background: var(--danger-wash);
+  color: var(--danger);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sync-conflicts .count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--danger);
+  color: var(--surface);
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (hover: hover) {
+  .sync-conflicts:hover {
+    background: color-mix(in srgb, var(--danger) 14%, var(--danger-wash));
+  }
+}
+
+.conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.conflicts > p {
+  margin: 0;
+}
+
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--danger-wash);
+  overflow-wrap: anywhere;
+}
+
+.conflict small {
+  font-size: 13px;
+}
+
+.receipt-remote {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--wash);
+}
+
+.receipt-remote img {
+  display: block;
+  width: 100%;
+  max-height: 30svh;
+  object-fit: contain;
+}
+
+.receipt-view.is-remote .btn {
+  align-self: flex-start;
 }
 
 /* ---------- Resumen ---------- */
@@ -2363,4 +2546,436 @@ input:focus-visible + .btn {
   border-radius: 99px;
   background: var(--warn-wash);
   color: var(--warn-ink);
+}
+
+/* ---------- Mis rifas ---------- */
+
+.raffles {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.raffle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.raffle-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: left;
+  transition: border-color 0.15s;
+}
+
+.raffle-item.is-current {
+  border-color: var(--accent-strong);
+  background: var(--accent-wash);
+}
+
+@media (hover: hover) {
+  .raffle-item:hover {
+    border-color: var(--accent);
+  }
+}
+
+.raffle-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.raffle-item-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.raffle-item-stats {
+  font-size: 14px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.raffle-item-main .muted {
+  font-size: 13px;
+}
+
+.raffle-new {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  animation: reveal var(--dur) var(--ease-out-expo);
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.check input {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--accent-strong);
+}
+
+.check span {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.check small {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.raffle-archived summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.raffle-archived .raffle-list {
+  margin-top: 4px;
+}
+
+/* ---------- Nube: cuentas, miembros e invitaciones ---------- */
+
+/* Agrupa campos (para deshabilitarlos juntos) sin cambiar el diseño. */
+.plain-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.share-controls .plain-group {
+  gap: 18px;
+}
+
+.cell.is-locked {
+  border-style: dashed;
+  background: transparent;
+  color: var(--ink-3);
+  font-weight: 500;
+  cursor: not-allowed;
+}
+
+.cell.is-locked:active {
+  transform: none;
+}
+
+.swatch.is-locked {
+  border-style: dashed;
+  background: transparent;
+}
+
+.sync-members {
+  min-height: 44px;
+}
+
+.sync-lost {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-basis: 100%;
+}
+
+.sync-lost .muted {
+  margin: 0;
+}
+
+.sync-bar .btn-sm {
+  min-height: 44px;
+}
+
+.privacy-note strong {
+  display: block;
+  color: var(--ink);
+}
+
+.form-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--danger-wash);
+  animation: reveal var(--dur) var(--ease-out-expo);
+}
+
+.account-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  justify-content: center;
+}
+
+.account-links .btn,
+.account-line .btn,
+.member-row .btn,
+.shared-item .btn,
+.raffle-lost .btn,
+.notice-inline .btn {
+  min-height: 44px;
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.account-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+.account-who > span:last-child,
+.member-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+.notice-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--note-wash);
+  border: 1px solid var(--note-line);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.notice-inline p {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+.account-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.raffle-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.raffle-item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
+.badge.is-cloud {
+  gap: 4px;
+  background: var(--accent-wash-2);
+  color: var(--accent-deep);
+}
+
+.badge.is-local {
+  background: var(--wash-2);
+  color: var(--ink-2);
+}
+
+.icon-cloud {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.raffle-lost {
+  padding: 0 4px;
+}
+
+.shared {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.shared-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.members {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.member {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.member-main {
+  flex: 1;
+}
+
+.member-email {
+  font-size: 13px;
+}
+
+.member-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
+.member-meta .muted {
+  font-size: 13px;
+}
+
+.member-editor {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  animation: reveal var(--dur) var(--ease-out-expo);
+}
+
+.invite {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.invite-title {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.invite-link {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: reveal var(--dur) var(--ease-out-expo);
+}
+
+.invite-link input {
+  font-size: 14px;
+}
+
+.invitation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.invitation-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--accent-wash);
+}
+
+.invitation-head p {
+  margin: 0;
+}
+
+.invitation-title {
+  font: 800 28px/1.05 var(--display);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.sold-by {
+  margin-top: 2px;
+}
+
+@media (max-width: 360px) {
+  .choice-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

@@ -6,6 +6,9 @@ import {
   plural,
   priceBreakdown,
   priceFor,
+  saleLabel,
+  slug,
+  exportFileName,
   todayStamp,
 } from '../../src/lib/format.js'
 
@@ -90,5 +93,26 @@ describe('availableMessage', () => {
 describe('todayStamp', () => {
   it('devuelve AAAA-MM-DD', () => {
     expect(todayStamp()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})
+
+describe('nombres de archivo', () => {
+  it('slug quita tildes, signos y espacios', () => {
+    expect(slug('  Club Atenas — 2026 ¡Ñandú! ')).toBe('club-atenas-2026-nandu')
+    expect(slug('')).toBe('')
+  })
+
+  it('incluye la rifa salvo con el título por defecto', () => {
+    expect(exportFileName('respaldo', 'Club Atenas', 'json')).toBe(`rifa-respaldo-club-atenas-${todayStamp()}.json`)
+    expect(exportFileName('disponibles', 'Rifa', 'png')).toBe(`rifa-disponibles-${todayStamp()}.png`)
+    expect(exportFileName('disponibles', '', 'png')).toBe(`rifa-disponibles-${todayStamp()}.png`)
+  })
+})
+
+describe('saleLabel', () => {
+  it('marca el número de comprobante provisorio de las rifas en la nube', () => {
+    expect(saleLabel({ seq: 12 })).toBe('#12')
+    expect(saleLabel({ seq: 12, provisional: false })).toBe('#12')
+    expect(saleLabel({ seq: 12, provisional: true })).toBe('#12 (provisorio)')
   })
 })

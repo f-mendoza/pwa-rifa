@@ -14,6 +14,8 @@ export function friendlyError(err, fallback = 'Algo salió mal. Probá de nuevo.
   if (name === 'InvalidStateError' || name === 'DatabaseClosedError') {
     return 'No se pudo acceder a los datos guardados. Cerrá y volvé a abrir la app.'
   }
+  // Los de la sincronización ya traen su explicación en castellano.
+  if (name === 'SyncError') return err.message || fallback
   if (name && name !== 'Error') return fallback
   return err.message || fallback
 }

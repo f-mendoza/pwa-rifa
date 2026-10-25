@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { personKey } from '../db.js'
 import { usePagination } from '../hooks/usePagination.js'
-import { formatDateTime, formatMoney, plural } from '../lib/format.js'
+import { formatDateTime, formatMoney, plural, saleLabel, sellerName } from '../lib/format.js'
 import { Pagination } from './Pagination.jsx'
 import { ReceiptThumb } from './Receipt.jsx'
 
@@ -29,7 +29,7 @@ export function PaymentsView({ data, onOpenPurchase }) {
       if (filter === 'missing' && p.receipt) return false
       if (filter === 'manual' && !p.manual) return false
       if (!q) return true
-      if (numeric) return p.numbers.includes(Number(q)) || String(p.id) === q
+      if (numeric) return p.numbers.includes(Number(q)) || String(p.seq) === q
       return personKey(p.payer).includes(key)
     })
   }, [purchases, filter, query])
@@ -99,7 +99,8 @@ export function PaymentsView({ data, onOpenPurchase }) {
                 <span className="payment-main">
                   <span className="payment-name">{p.payer}</span>
                   <span className="muted">
-                    #{p.id} · {formatDateTime(p.createdAt)}
+                    {saleLabel(p)} · {formatDateTime(p.createdAt)}
+                    {data.raffle?.remote && p.createdBy && ` · vendió ${sellerName(p.createdBy, data.user)}`}
                   </span>
                   <span className="payment-numbers">
                     {plural(p.numbers.length, 'número', 'números')}: {p.numbers.join(' · ')}

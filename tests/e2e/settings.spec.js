@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import { assign, cell, goTo, openApp, toast } from './helpers.js'
+import { assign, cell, goTo, openApp, openRaffles, toast } from './helpers.js'
 
 test.beforeEach(async ({ page }) => openApp(page))
 
@@ -49,7 +49,7 @@ test('agregar y quitar premios; descartar vuelve atrás', async ({ page }) => {
   await expect(prizes.getByRole('textbox')).toHaveCount(before)
 })
 
-test('respaldo: descargar y restaurar pide confirmación si hay datos', async ({ page }) => {
+test('respaldo: se descarga la rifa y al restaurarlo se agrega como otra rifa', async ({ page }) => {
   await assign(page, [5, 6], { name: 'Ana' })
   await goTo(page, 'Ajustes')
 
@@ -61,47 +61,54 @@ test('respaldo: descargar y restaurar pide confirmación si hay datos', async ({
   const backup = JSON.parse(await readFile(await download.path(), 'utf8'))
   expect(backup.tickets).toHaveLength(2)
 
-  // Se vende otro número y después se restaura el respaldo: tiene que confirmar.
+  // Se vende otro número y después se restaura el respaldo: queda como una rifa nueva, sin tocar la actual.
   await goTo(page, 'Números')
   await assign(page, [7], { name: 'Beto' })
-  await goTo(page, 'Ajustes')
-  await page.locator('input[type=file][accept*=json]').setInputFiles({
+  const dialog = await openRaffles(page)
+  await dialog.locator('input[type=file][accept*=json]').setInputFiles({
     name: 'respaldo.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(backup)),
   })
-  const confirm = page.getByRole('alert').filter({ hasText: 'reemplaza todo' })
-  await expect(confirm).toContainText('3 números tomados')
-  await confirm.getByRole('button', { name: 'Sí, restaurar' }).click()
-  await expect(toast(page)).toContainText('Respaldo restaurado: 2 números, 1 persona')
-
-  await goTo(page, 'Números')
+  await expect(toast(page)).toContainText('Rifa «Rifa» restaurada: 2 números, 1 persona')
+  await expect(dialog).toBeHidden()
   await expect(cell(page, 7)).toHaveAccessibleName('Número 7, disponible')
+  await expect(cell(page, 5)).toHaveAccessibleName('Número 5, tomado por Ana')
+
+  const list = await openRaffles(page)
+  await expect(list.locator('.raffle-item')).toHaveCount(2)
+  await list.getByRole('button', { name: /3 de 300 vendidos/ }).click()
+  await expect(cell(page, 7)).toHaveAccessibleName('Número 7, tomado por Beto')
 })
 
 test('un archivo que no es respaldo se rechaza sin tocar nada', async ({ page }) => {
-  await goTo(page, 'Ajustes')
-  await page.locator('input[type=file][accept*=json]').setInputFiles({
+  const dialog = await openRaffles(page)
+  const input = dialog.locator('input[type=file][accept*=json]')
+  await input.setInputFiles({
     name: 'otra-cosa.json',
     mimeType: 'application/json',
     buffer: Buffer.from('{"hola": 1}'),
   })
   await expect(toast(page)).toContainText('no es un archivo de esta app')
-  await page.locator('input[type=file][accept*=json]').setInputFiles({
+  await input.setInputFiles({
     name: 'roto.json',
     mimeType: 'application/json',
     buffer: Buffer.from('{roto'),
   })
   await expect(toast(page)).toContainText('El archivo no es un respaldo válido')
+  await expect(dialog.locator('.raffle-item')).toHaveCount(1)
 })
 
-test('empezar una rifa nueva pide confirmación y borra las ventas', async ({ page }) => {
+test('borrar la única rifa pide confirmación y deja una vacía', async ({ page }) => {
   await assign(page, [1], { name: 'Ana' })
   await goTo(page, 'Ajustes')
-  await page.getByRole('button', { name: 'Empezar una rifa nueva…' }).click()
-  await page.getByRole('button', { name: 'Sí, borrar todo' }).click()
-  await expect(toast(page)).toContainText('Rifa reiniciada')
+  await page.getByRole('button', { name: 'Borrar esta rifa…' }).click()
+  await expect(page.getByRole('alert')).toContainText('1 participante, 1 comprobante y 1 número tomado')
+  await page.getByRole('button', { name: 'Sí, borrar la rifa' }).click()
+  await expect(toast(page)).toContainText('Rifa «Rifa» borrada')
   await expect(page.getByText('0% vendido · 0 de 300')).toBeVisible()
+  // Vuelve a Números: es otra rifa.
+  await expect(page.getByRole('button', { name: 'Números', exact: true })).toHaveAttribute('aria-current', 'page')
 })
 
 test('elegir un tema cambia los colores de la app y se mantiene al recargar', async ({ page }) => {

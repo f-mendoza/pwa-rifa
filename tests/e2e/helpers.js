@@ -12,6 +12,25 @@ export async function goTo(page, tab) {
   await page.getByRole('navigation', { name: 'Secciones' }).getByRole('button', { name: tab, exact: true }).click()
 }
 
+/** Abre "Mis rifas" tocando el título y devuelve el diálogo. */
+export async function openRaffles(page) {
+  await page.getByRole('button', { name: /Cambiar de rifa$/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Mis rifas' })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+/** Crea una rifa desde "Mis rifas" (copiando la abierta, salvo `copy: false`) y espera a que se abra. */
+export async function createRaffle(page, title, { copy = true } = {}) {
+  const dialog = await openRaffles(page)
+  await dialog.getByRole('button', { name: '+ Nueva rifa' }).click()
+  await dialog.getByLabel('Nombre de la rifa nueva').fill(title)
+  if (!copy) await dialog.getByRole('checkbox').uncheck()
+  await dialog.getByRole('button', { name: 'Crear rifa' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(title.toUpperCase())
+}
+
 export function toast(page) {
   return page.locator('.toast-region')
 }

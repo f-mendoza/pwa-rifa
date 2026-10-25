@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { formatMoney, plural } from '../lib/format.js'
+import { formatMoney, plural, saleLabel } from '../lib/format.js'
+import { permissionsFor } from '../lib/permissions.js'
 import { ContactLinks } from './ContactLinks.jsx'
 import { Dialog } from './Dialog.jsx'
 import { ReceiptThumb } from './Receipt.jsx'
@@ -21,6 +22,7 @@ export function TicketDialog({ number, data, onClose, onOpenTicket, onOpenPurcha
           person={person}
           purchase={purchase}
           people={data.people}
+          perms={permissionsFor(data)}
           onClose={onClose}
           onOpenTicket={onOpenTicket}
           onOpenPurchase={onOpenPurchase}
@@ -33,7 +35,7 @@ export function TicketDialog({ number, data, onClose, onOpenTicket, onOpenPurcha
   )
 }
 
-function TicketBody({ number, person, purchase, people, onClose, onOpenTicket, onOpenPurchase, onUpdatePerson, onTransfer, onRelease }) {
+function TicketBody({ number, person, purchase, people, perms, onClose, onOpenTicket, onOpenPurchase, onUpdatePerson, onTransfer, onRelease }) {
   const [mode, setMode] = useState('view')
   const others = person.numbers.filter((n) => n !== number)
 
@@ -93,7 +95,7 @@ function TicketBody({ number, person, purchase, people, onClose, onOpenTicket, o
         <button type="button" className="purchase-link" onClick={() => onOpenPurchase(purchase.id)}>
           <ReceiptThumb receipt={purchase.receipt} size="sm" />
           <span>
-            <strong>Comprobante #{purchase.id}</strong>
+            <strong>Comprobante {saleLabel(purchase)}</strong>
             <span className="muted">
               {purchase.payer !== person.name && `Pagó ${purchase.payer} · `}
               {formatMoney(purchase.total)} · {purchase.receipt ? 'con comprobante' : 'sin comprobante'}
@@ -142,18 +144,25 @@ function TicketBody({ number, person, purchase, people, onClose, onOpenTicket, o
             </button>
           </div>
         </div>
-      ) : (
+      ) : perms.edit ? (
         <div className="form-actions wrap">
-          <button type="button" className="btn btn-ghost danger-text" onClick={() => setMode('confirm-release')}>
-            Liberar número
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={() => setMode('transfer')}>
-            Pasar a otra persona
-          </button>
+          {perms.canChangeNumber(number) && (
+            <>
+              <button type="button" className="btn btn-ghost danger-text" onClick={() => setMode('confirm-release')}>
+                Liberar número
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setMode('transfer')}>
+                Pasar a otra persona
+              </button>
+            </>
+          )}
           <button type="button" className="btn btn-secondary" onClick={() => setMode('edit')}>
             Editar datos
           </button>
         </div>
+      ) : null}
+      {perms.edit && !perms.canChangeNumber(number) && (
+        <p className="field-hint">Este número está fuera de tu talonario: no lo podés liberar ni pasar a otra persona.</p>
       )}
     </div>
   )
