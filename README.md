@@ -25,7 +25,7 @@ Arriba siempre se ven los totales: disponibles, tomados, participantes y lo reca
 - **Comprobantes.** Las fotos se achican a 1600 px en JPEG antes de guardarse (una foto de 5 MB queda en ~300 KB) y se genera una miniatura. Los PDF se guardan tal cual (máximo 8 MB).
 - **Imagen para compartir.** Se dibuja en un `<canvas>` (`src/lib/shareImage.js`) y queda pre-generada: así "Compartir" abre el menú nativo al instante, dentro del gesto del usuario (Safari cancela el share si hay que esperar). Mientras se regenera tras un cambio, los botones de compartir se deshabilitan para no mandar una imagen con números ya vendidos.
 - **Offline.** El service worker (vite-plugin-pwa / Workbox) precachea JS, CSS, fuentes e íconos: una vez abierta, la app funciona sin conexión y se puede instalar en la pantalla de inicio. Cuando hay una versión nueva, la app ofrece actualizarse.
-- **Respaldo.** Desde Ajustes se descarga un `.json` con todo (las imágenes de los comprobantes van en base64) para guardarlo o pasarlo a otro teléfono. Al restaurar se valida el archivo completo antes de reemplazar nada. También acepta respaldos del formato anterior.
+- **Respaldo.** Desde Ajustes se descarga un `.json` con todo (las imágenes de los comprobantes van en base64) para guardarlo o pasarlo a otro teléfono. Desde «Mis rifas» se restaura como una rifa local nueva. El creador también puede cargarlo desde Ajustes en una rifa en la nube todavía vacía, para compartir sus datos con los miembros. La carga se valida completa; si ya hubo ventas, no se permite reemplazarlas. También acepta respaldos del formato anterior.
 
 ## Desarrollo
 

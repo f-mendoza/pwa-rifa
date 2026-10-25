@@ -1072,6 +1072,43 @@ export function createStore(name = 'rifa') {
     }
   }
 
+  /** Carga inicial de una rifa en la nube: una sola operación, validada también por el servidor. */
+  async function importCloudBackup(raffleId, data) {
+    const parsed = await parseBackup(data)
+    const personIds = new Map(parsed.participants.map((p) => [p.id, newId()]))
+    const saleIds = new Map(parsed.purchases.map((p) => [p.id, newId()]))
+    return db.transaction('rw', WRITE(), async () => {
+      const raffle = await readRaffle(raffleId)
+      if (!raffle.remote) throw new Error('Esta rifa no está en la nube')
+      await checkWritable(raffle, { ownerOnly: true })
+      const occupied = await Promise.all([db.people, db.sales, db.numbers].map((table) => table.where('raffleId').equals(raffleId).count()))
+      if (raffle.lastSeq || occupied.some(Boolean)) {
+        throw new Error('Sólo podés cargar un respaldo en una rifa en la nube que todavía esté vacía')
+      }
+      const createdBy = (await currentUser()) ?? { id: raffle.remote.userId, name: '' }
+      const people = parsed.participants.map((p) => ({ ...p, id: personIds.get(p.id) }))
+      const sales = parsed.purchases.map((p) => ({ ...p, id: saleIds.get(p.id), participantId: personIds.get(p.participantId), createdBy }))
+      const numbers = parsed.tickets.map((t) => ({
+        number: t.number, participantId: personIds.get(t.participantId), saleId: saleIds.get(t.purchaseId), createdAt: t.createdAt, createdBy,
+      }))
+      const receipts = parsed.receipts.map((r) => ({ ...r, purchaseId: saleIds.get(r.purchaseId), raffleId }))
+      const lastSeq = sales.reduce((max, s) => Math.max(max, s.seq), 0)
+      await db.raffles.update(raffleId, { config: parsed.config, share: parsed.share, lastSeq })
+      await db.people.bulkAdd(people.map((p) => ({ ...p, raffleId })))
+      await db.sales.bulkAdd(sales.map((s) => ({ ...s, raffleId })))
+      await db.numbers.bulkAdd(numbers.map(({ saleId, ...n }) => ({ ...n, id: numberId(raffleId, n.number), purchaseId: saleId, raffleId })))
+      await db.receipts.bulkAdd(receipts)
+      await queueOp(raffle, 'raffle.importBackup', {
+        config: parsed.config, share: parsed.share, people, sales, numbers,
+        receipts: receipts.map((r) => ({ saleId: r.purchaseId, meta: receiptMeta(r) })),
+      })
+      for (const r of receipts) {
+        await db.uploads.put({ saleId: r.purchaseId, raffleId, addedAt: r.addedAt, createdAt: Date.now() })
+      }
+      return { tickets: numbers.length, participants: people.length, receipts: receipts.length }
+    })
+  }
+
   /**
    * Guarda una copia local (independiente, con ids nuevos) de una rifa, p. ej. de una rifa en la
    * nube que se borró o a la que se perdió el acceso. La copia queda abierta. Los comprobantes de
@@ -1174,6 +1211,7 @@ export function createStore(name = 'rifa') {
     removeRaffleLocally,
     exportBackup,
     importBackup,
+    importCloudBackup,
     saveLocalCopy,
     dismissConflicts,
     setSyncState,
@@ -1213,6 +1251,7 @@ export const {
   removeRaffleLocally,
   exportBackup,
   importBackup,
+  importCloudBackup,
   saveLocalCopy,
   dismissConflicts,
   setSyncState,

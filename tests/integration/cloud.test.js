@@ -35,6 +35,43 @@ const names = async (store, raffleId) => {
   return Object.fromEntries((await tickets(store, raffleId)).map((t) => [t.number, people.get(t.participantId)]))
 }
 
+it('el respaldo se importa en la misma rifa y el otro teléfono descarga sus datos y su archivo', async () => {
+  const owner = await phone('importador')
+  const member = await phone('miembro-importacion')
+  const source = createStore(`respaldo-${unique()}`)
+  try {
+    await owner.session.register({ name: 'Creador', email: `importador-${unique()}@example.com`, password: 'secreto123', passwordConfirmation: 'secreto123' })
+    await member.session.register({ name: 'Miembro', email: `miembro-${unique()}@example.com`, password: 'secreto123', passwordConfirmation: 'secreto123' })
+    const raffleId = await owner.store.createCloudRaffle({ title: 'Vacía' }, owner.transport)
+    const { token } = await owner.session.client.createInvitation(raffleId, { role: 'seller' })
+    await member.session.client.acceptInvitation(token)
+    await downloadRaffle(raffleId, member.transport, { store: member.store })
+    const localId = await source.ensureRaffle()
+    const blob = new Blob([png], { type: 'image/png' })
+    await source.assignNumbers(localId, [5, 8], { name: 'Ana', referrer: 'Club' }, {
+      amount: 7100, receipt: { blob, name: 'pago.png', type: blob.type, size: blob.size, addedAt: 1000, thumb: null },
+    })
+    await source.transferNumber(localId, 8, { name: 'Beto' })
+    const backup = await source.exportBackup(localId)
+    await expect(member.store.importCloudBackup(raffleId, backup)).rejects.toThrow('Sólo quien organiza')
+    await owner.store.importCloudBackup(raffleId, backup)
+    const [op] = await owner.store.db.outbox.where('raffleId').equals(raffleId).toArray()
+    expect((await owner.transport.pushOps(raffleId, [op])).results[0].status).toBe('accepted')
+    // El ciclo reenvía la misma operación: verifica idempotencia real después de perder una respuesta.
+    expect((await syncRaffle(raffleId, owner.transport, { store: owner.store })).rejected).toBe(0)
+    await syncRaffle(raffleId, member.transport, { store: member.store })
+    expect(await names(member.store, raffleId)).toEqual({ 5: 'Ana', 8: 'Beto' })
+    const [sale] = await member.store.db.sales.where('raffleId').equals(raffleId).toArray()
+    expect(sale).toMatchObject({ amount: 7100, seq: 1, createdBy: { id: owner.session.user.id } })
+    const downloaded = await fetchReceiptFile(raffleId, sale.id, member.transport, { store: member.store })
+    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(new Uint8Array(png))
+    expect((await owner.store.db.raffles.get(raffleId)).remote.role).toBe('owner')
+    await expect(owner.store.importCloudBackup(raffleId, backup)).rejects.toThrow('todavía esté vacía')
+  } finally {
+    await Promise.all([owner.store.db.delete(), member.store.db.delete(), source.db.delete()])
+  }
+})
+
 describe('integración con la API real', () => {
   let ana
   let beto

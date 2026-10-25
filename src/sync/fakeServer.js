@@ -250,6 +250,60 @@ export function createFakeServer({ now = () => Date.now() } = {}) {
   const liveSale = (raffle, saleId) => (live(raffle.sales.get(saleId)) ? raffle.sales.get(saleId) : null)
 
   const handlers = {
+    'raffle.importBackup'({ raffle, user, member, payload }) {
+      if (member.role !== 'owner' || raffle.ownerId !== user.id) reject('forbidden', 'Sólo quien creó la rifa puede cargar un respaldo')
+      if (raffle.lastSeq || raffle.people.size) reject('raffle_not_empty', 'Sólo podés cargar un respaldo en una rifa en la nube que todavía esté vacía')
+      if (!['people', 'sales', 'numbers', 'receipts'].every((key) => Array.isArray(payload[key]))) reject('invalid', 'Faltan datos del respaldo')
+      let config
+      try {
+        config = normalizeConfig(payload.config)
+      } catch (err) {
+        reject('invalid', err.message)
+      }
+      const people = new Map()
+      const keys = new Set()
+      for (const p of payload.people) {
+        const data = validPerson(p)
+        const key = personKey(data.name)
+        if (!p.id || people.has(p.id) || keys.has(key) || [...raffles.values()].some((r) => r.people.has(p.id))) reject('invalid', 'El respaldo tiene personas repetidas o con un id en uso')
+        people.set(p.id, { ...data, id: p.id, key, createdAt: p.createdAt, deleted: false })
+        keys.add(key)
+      }
+      const createdBy = { id: user.id, name: user.name }
+      const sales = new Map()
+      const seqs = new Set()
+      for (const s of payload.sales) {
+        if (!s.id || sales.has(s.id) || [...raffles.values()].some((r) => r.sales.has(s.id)) || !people.has(s.participantId) || !Number.isInteger(s.seq) || s.seq < 1 || seqs.has(s.seq)) reject('invalid', 'Una venta del respaldo no es válida')
+        let amount
+        try {
+          amount = normalizeAmount(s.amount)
+        } catch (err) {
+          reject('invalid', err.message)
+        }
+        sales.set(s.id, { id: s.id, participantId: s.participantId, seq: s.seq, amount, createdAt: s.createdAt, createdBy, deleted: false })
+        seqs.add(s.seq)
+      }
+      const numbers = new Map()
+      for (const n of payload.numbers) {
+        if (!Number.isInteger(n.number) || n.number < 1 || n.number > config.total || numbers.has(n.number) || !people.has(n.participantId) || !sales.has(n.saleId)) reject('invalid', 'Un número del respaldo está fuera de rango o no tiene persona y venta')
+        numbers.set(n.number, { number: n.number, participantId: n.participantId, saleId: n.saleId, createdAt: n.createdAt, createdBy, deleted: false })
+      }
+      const receipts = new Map()
+      for (const r of payload.receipts) {
+        if (!sales.has(r.saleId) || receipts.has(r.saleId) || !r.meta) reject('invalid', 'Un comprobante del respaldo no tiene venta o está repetido')
+        receipts.set(r.saleId, { ...r.meta, saleId: r.saleId, hasFile: false, deleted: false })
+      }
+      // Se valida todo antes de escribir, igual que la transacción de la API real.
+      for (const [target, rows] of [[raffle.people, people], [raffle.sales, sales], [raffle.numbers, numbers], [raffle.receipts, receipts]]) {
+        for (const [id, row] of rows) target.set(id, touch(raffle, row))
+      }
+      raffle.config = config
+      raffle.share = normalizeSharePrefs(payload.share)
+      raffle.lastSeq = Math.max(0, ...seqs)
+      touchRaffle(raffle)
+      return null
+    },
+
     'numbers.assign'({ raffle, user, member, payload, opCreatedAt }) {
       const { saleId, numbers } = payload
       const saleTaken = [...raffles.values()].some((r) => r.sales.has(saleId))

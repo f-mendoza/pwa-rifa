@@ -6,10 +6,10 @@ Contrato **único** entre la PWA (`src/`) y la API Laravel (`api/`). Complementa
 
 | Tema | Decisión |
 |---|---|
-| Tipos de rifa | **Local** (`remote: null`) o **en la nube** (`remote: {...}`). Se elige al crearla y **no se puede convertir**: no existe "Subir a la nube". Restaurar un respaldo siempre crea una rifa local. Sí se permite guardar una *copia local* de una rifa en la nube (ids nuevos, rifa independiente). |
+| Tipos de rifa | **Local** (`remote: null`) o **en la nube** (`remote: {...}`). Se elige al crearla y **no se puede convertir**: no existe "Subir a la nube". Desde «Mis rifas», restaurar un respaldo crea una rifa local. Desde Ajustes, el creador puede cargar un respaldo en su rifa en la nube todavía vacía (`raffle.importBackup`). Sí se permite guardar una *copia local* de una rifa en la nube (ids nuevos, rifa independiente). |
 | Id de la rifa | Local: UUIDv7 generado en el cliente (`newId()`). En la nube: lo genera **la API** (`HasUuids` de Laravel 13, v7) en `POST /raffles`. Crear una rifa en la nube requiere sesión y conexión. |
 | Ids de personas y ventas | Siempre UUIDv7 del cliente (hacen falta para trabajar offline). El servidor los acepta como clave primaria. |
-| `seq` (nº de comprobante) | Lo asigna **siempre el servidor**. El del cliente es provisorio hasta que el pull trae el definitivo; la UI lo marca como provisorio mientras la venta tenga operaciones pendientes. |
+| `seq` (nº de comprobante) | En ventas nuevas lo asigna **el servidor**. El del cliente es provisorio hasta que el pull trae el definitivo; la UI lo marca como provisorio mientras la venta tenga operaciones pendientes. En la carga inicial de un respaldo se conservan los números de comprobante, validados como positivos y únicos; las ventas siguientes continúan desde el máximo. |
 | Talonarios | **Opcionales**: `raffle_user.ranges` (`null` = sin restricción, o `[[1,100],[201,250]]`). |
 | Archivar | **Personal y por dispositivo**: `archivedAt` local, no genera operación. El servidor guarda `raffle_user.archived_at` y lo expone, pero el cliente no está obligado a sincronizarlo. |
 | Borrar una rifa en la nube | **No es una operación del outbox**: es una llamada directa con conexión. Dueño → `DELETE /raffles/{id}`. Otro rol → "Salir de la rifa" (`DELETE /raffles/{id}/members/me`). Después se borra localmente con su outbox. |
@@ -116,6 +116,7 @@ Cada operación describe la **intención**. El servidor las aplica **en orden**,
 | `person.update` | `{ personId, data: { name, phone, email, referrer } }` | owner, seller | `person_not_found`, `invalid` |
 | `raffle.updateConfig` | `{ config }` | owner | `total_below_sold`, `invalid` |
 | `raffle.updateShare` | `{ share }` | owner, seller | `invalid` |
+| `raffle.importBackup` | `{ config, share, people[], sales[], numbers[], receipts[] }` | owner (creador), rifa todavía vacía | `forbidden`, `raffle_not_empty`, `invalid` |
 | `receipt.set` | `{ saleId, meta: { name, type, size, thumb, addedAt } }` | owner, seller | `sale_not_found` |
 | `receipt.remove` | `{ saleId }` | owner, seller | — (si no había, accepted) |
 
@@ -131,6 +132,7 @@ Cualquier operación de un `viewer`, o de un tipo desconocido, se rechaza con `f
 - **sale.void**: borra sus números, la venta, el comprobante y las personas huérfanas.
 - **person.update**: si el nombre nuevo coincide (por `key`) con otra persona, se **unifican**: las referencias pasan a la otra, se completan sus campos vacíos, la persona editada se borra (soft) y se registra el alias.
 - **raffle.updateConfig**: rechaza si algún número vendido supera el nuevo total. Última escritura gana.
+- **raffle.importBackup**: sólo el creador (`owner`), en una rifa sin personas ni historial de ventas. Payload `{ config, share, people, sales, numbers, receipts }`, con ids UUID nuevos generados por el cliente. `numbers` usa `saleId`; `receipts` trae `{ saleId, meta }`, sin archivos. Se validan listas, ids, referencias, montos, números y secuencias. La carga entera se confirma en una transacción con la rifa bloqueada; si otro teléfono vendió primero se rechaza con `raffle_not_empty` y el cliente reconcilia con el servidor. Mantiene el id, dueño, miembros y talonarios de la rifa destino; conserva fechas, montos, configuración, imagen y números de comprobante del respaldo. Las ventas importadas se atribuyen al creador que las carga. Los adjuntos usan la cola habitual de subidas. Se puede preparar offline y el mismo `opId` permite reintentar sin duplicar datos.
 - Los ids que llegan en las operaciones se resuelven contra los **aliases** antes de aplicarlas (una operación offline puede referirse a una persona que el servidor ya unificó).
 - Cada fila tocada recibe una `version` nueva; la rifa también, si cambió `config`, `share`, `last_seq` o se borró.
 

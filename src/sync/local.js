@@ -12,6 +12,14 @@
 /** Entidades que toca cada tipo de operación, deducidas del payload. */
 export function opKeys(type, payload = {}) {
   switch (type) {
+    case 'raffle.importBackup':
+      return [
+        'raffle:config', 'raffle:share', 'raffle:seq',
+        ...(payload.people ?? []).map((p) => `person:${p.id}`),
+        ...(payload.sales ?? []).map((s) => `sale:${s.id}`),
+        ...(payload.numbers ?? []).map((n) => `number:${n.number}`),
+        ...(payload.receipts ?? []).map((r) => `receipt:${r.saleId}`),
+      ]
     case 'numbers.assign':
       return [
         `sale:${payload.saleId}`,

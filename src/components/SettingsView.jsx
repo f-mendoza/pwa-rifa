@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MAX_TOTAL } from '../db.js'
 import { requestPersistence } from '../hooks/usePwa.js'
 import { useSession } from '../hooks/useSession.js'
@@ -22,6 +22,7 @@ export function SettingsView({
   onSaveConfig,
   onSaveAppearance,
   onExport,
+  onImportBackup,
   onArchive,
   onDelete,
   onSaveCopy,
@@ -39,6 +40,8 @@ export function SettingsView({
         data={data}
         perms={perms}
         onExport={onExport}
+        onImportBackup={onImportBackup}
+        notify={notify}
         onArchive={onArchive}
         onDelete={onDelete}
         onSaveCopy={onSaveCopy}
@@ -286,9 +289,14 @@ const DELETE_LABELS = {
   remove: ['Quitar del dispositivo…', 'Sí, quitar'],
 }
 
-function DataPanel({ data, perms, onExport, onArchive, onDelete, onSaveCopy }) {
+function DataPanel({ data, perms, onExport, onImportBackup, notify, onArchive, onDelete, onSaveCopy }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [persisted, setPersisted] = useState(null)
+  const [backup, setBackup] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const fileRef = useRef(null)
+  const canImport = perms.cloud && perms.config && !data.raffle.lastSeq && !data.takenCount &&
+    !data.purchases?.length && !data.people?.length
   const name = data.config.title || 'Rifa'
   const archived = Boolean(data.raffle.archivedAt)
   const kind = deleteKind(perms)
@@ -306,7 +314,7 @@ function DataPanel({ data, perms, onExport, onArchive, onDelete, onSaveCopy }) {
       {perms.cloud ? (
         <p className="muted">
           Esta rifa está en la nube y también guardada en este dispositivo: funciona sin internet y se sincroniza al
-          volver la señal. Un respaldo se restaura como una rifa local, aparte.
+          volver la señal. Desde «Mis rifas» podés restaurar un respaldo como una rifa local aparte.
         </p>
       ) : (
         <p className="muted">
@@ -326,6 +334,65 @@ function DataPanel({ data, perms, onExport, onArchive, onDelete, onSaveCopy }) {
           </button>
         )}
       </p>
+
+      {canImport && (
+        <div className="form">
+          <p className="field-hint">
+            Como organizador, podés cargar un respaldo en esta rifa vacía. Se compartirán sus datos y comprobantes con
+            los miembros.
+          </p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            aria-label="Respaldo para esta rifa en la nube"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files[0]
+              e.target.value = ''
+              if (!file) return
+              try {
+                setBackup({ name: file.name, data: JSON.parse(await file.text()) })
+              } catch {
+                notify('El archivo no es un respaldo válido', 'error')
+              }
+            }}
+          />
+          {backup ? (
+            <div className="confirm" role="alert">
+              <p>
+                ¿Cargar «{backup.name}» en esta rifa? Se usarán la configuración, las ventas y los comprobantes del respaldo.
+              </p>
+              <div className="form-actions wrap start">
+                <button type="button" className="btn btn-ghost" disabled={importing} onClick={() => setBackup(null)}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={importing}
+                  onClick={async () => {
+                    setImporting(true)
+                    try {
+                      if (await onImportBackup(backup.data)) setBackup(null)
+                    } finally {
+                      setImporting(false)
+                    }
+                  }}
+                >
+                  {importing ? 'Cargando…' : 'Sí, cargar respaldo'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="form-actions start">
+              <button type="button" className="btn btn-secondary" onClick={() => fileRef.current.click()}>
+                Cargar respaldo en esta rifa…
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="form-actions wrap start">
         <button type="button" className="btn btn-secondary" onClick={onExport}>

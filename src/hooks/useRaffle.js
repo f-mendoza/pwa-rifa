@@ -29,7 +29,7 @@ export function useRaffle() {
       ofRaffle(db.receipts),
     ])
     return {
-      raffle: { id: raffle.id, createdAt: raffle.createdAt, archivedAt: raffle.archivedAt, remote: raffle.remote ?? null },
+      raffle: { id: raffle.id, createdAt: raffle.createdAt, archivedAt: raffle.archivedAt, lastSeq: raffle.lastSeq, remote: raffle.remote ?? null },
       // Las rifas locales no tienen nada que sincronizar: ni se consulta.
       sync: raffle.remote ? await readSync(raffle.id) : null,
       config: raffleConfig(raffle),

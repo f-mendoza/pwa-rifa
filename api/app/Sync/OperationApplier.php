@@ -27,6 +27,7 @@ final class OperationApplier
         'person.update' => 'updatePerson',
         'raffle.updateConfig' => 'updateConfig',
         'raffle.updateShare' => 'updateShare',
+        'raffle.importBackup' => 'importBackup',
         'receipt.set' => 'setReceipt',
         'receipt.remove' => 'removeReceipt',
     ];
@@ -299,6 +300,13 @@ final class OperationApplier
     }
 
     // ---------- Rifa ----------
+
+    private function importBackup(SyncContext $ctx, array $p): ?array
+    {
+        (new BackupImporter)->apply($ctx, $p);
+
+        return null;
+    }
 
     private function updateConfig(SyncContext $ctx, array $p): ?array
     {

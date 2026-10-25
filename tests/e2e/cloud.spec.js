@@ -13,6 +13,47 @@ async function openFake(page, query = 'nube-falsa') {
 
 const nube = (page, fn, arg) => page.evaluate(fn, arg)
 
+test('el creador carga un respaldo en su rifa vacía con confirmación', async ({ page }) => {
+  await openFake(page)
+  const raffleId = await nube(page, () => globalThis.__rifaNube.createRaffle('Vacía'))
+  await goTo(page, 'Ajustes')
+  await page.getByRole('button', { name: 'Cargar respaldo en esta rifa…' }).click()
+  const backup = {
+    app: 'rifa', schema: 3,
+    raffle: { config: { title: 'Del respaldo', total: 100, price: 5000, packSize: 0, packPrice: 0, prizes: [], drawText: '' } },
+    participants: [{ id: 'ana', name: 'Ana', phone: '123' }],
+    purchases: [{ id: 'venta', participantId: 'ana', seq: 4, amount: 7100, createdAt: 1000 }],
+    tickets: [{ number: 5, participantId: 'ana', purchaseId: 'venta', createdAt: 1000 }],
+    receipts: [],
+  }
+  const file = { name: 'respaldo.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) }
+  await page.getByLabel('Respaldo para esta rifa en la nube').setInputFiles(file)
+  await expect(page.getByRole('alert')).toContainText('¿Cargar «respaldo.json»')
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('VACÍA')
+  await page.getByLabel('Respaldo para esta rifa en la nube').setInputFiles(file)
+  await page.getByRole('button', { name: 'Sí, cargar respaldo' }).click()
+  await expect(toast(page)).toContainText('Respaldo cargado')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('DEL RESPALDO')
+  await expect(page.locator('.sync-state')).toHaveText('Sincronizado')
+  await expect(page.getByRole('button', { name: 'Cargar respaldo en esta rifa…' })).toHaveCount(0)
+  const saved = await nube(page, (id) => globalThis.__rifaNube.server.inspect(id), raffleId)
+  expect(saved.numbers.map((n) => n.number)).toEqual([5])
+  await goTo(page, 'Pagos')
+  await expect(page.getByRole('button', { name: /Ana #4/ })).toBeVisible()
+})
+
+test('vendedores y observadores no ven la carga de respaldo en Ajustes', async ({ page }) => {
+  await openFake(page)
+  for (const role of ['seller', 'viewer']) {
+    await nube(page, (r) => globalThis.__rifaNube.shareWithMe(r, null, `Rifa ${r}`), role)
+    const dialog = await openRaffles(page)
+    await dialog.getByRole('button', { name: `Descargar Rifa ${role}` }).click()
+    await goTo(page, 'Ajustes')
+    await expect(page.getByRole('button', { name: 'Cargar respaldo en esta rifa…' })).toHaveCount(0)
+  }
+})
+
 test('crear una rifa en la nube: elegir dónde, aviso de datos y distintivos', async ({ page }) => {
   await openFake(page)
   let dialog = await openRaffles(page)

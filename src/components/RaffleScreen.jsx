@@ -5,6 +5,7 @@ import {
   deleteRaffle,
   dismissConflicts,
   exportBackup,
+  importCloudBackup,
   releaseNumber,
   removeRaffleLocally,
   removeReceipt,
@@ -205,6 +206,10 @@ export function RaffleScreen({ data, install, notice, notify, run, onOpenRaffles
             onOpenAccount={onOpenAccount}
             onSaveConfig={(config) => run(() => saveConfig(raffleId, config), 'Cambios guardados')}
             onSaveAppearance={(appearance) => run(() => saveAppearance(appearance))}
+            onImportBackup={(backup) => run(
+              () => importCloudBackup(raffleId, backup),
+              'Respaldo cargado. Los datos se enviarán a la nube al sincronizar.',
+            )}
             onExport={() =>
               run(async () => {
                 const backup = await exportBackup(raffleId)
