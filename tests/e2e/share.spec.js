@@ -89,13 +89,15 @@ test('colores y letras de la imagen: tema, personalizados y volver al original',
   await expect(style.getByRole('button', { name: 'Volver al diseño original' })).toBeHidden()
 })
 
-test('con "Como la app", cambiar el tema de la app redibuja la imagen', async ({ page }) => {
-  await goTo(page, 'Imagen')
-  const preview = page.locator('.preview img')
-  await expect(preview).toBeVisible()
-  const before = await preview.getAttribute('src')
-  await goTo(page, 'Ajustes')
-  await page.locator('.theme-option', { hasText: 'Océano' }).click()
-  await goTo(page, 'Imagen')
-  await expect(preview).not.toHaveAttribute('src', before)
-})
+for (const name of ['Océano', 'Bosque', 'Marea', 'Terracota']) {
+  test(`con "Como la app", elegir ${name} redibuja la imagen`, async ({ page }) => {
+    await goTo(page, 'Imagen')
+    const preview = page.locator('.preview img')
+    await expect(preview).toBeVisible()
+    const before = await preview.getAttribute('src')
+    await goTo(page, 'Ajustes')
+    await page.locator('.theme-option', { hasText: name }).click()
+    await goTo(page, 'Imagen')
+    await expect(preview).not.toHaveAttribute('src', before)
+  })
+}

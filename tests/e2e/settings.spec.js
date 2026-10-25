@@ -111,20 +111,29 @@ test('borrar la única rifa pide confirmación y deja una vacía', async ({ page
   await expect(page.getByRole('button', { name: 'Números', exact: true })).toHaveAttribute('aria-current', 'page')
 })
 
-test('elegir un tema cambia los colores de la app y se mantiene al recargar', async ({ page }) => {
-  await goTo(page, 'Ajustes')
-  const html = page.locator('html')
-  await expect(html).toHaveAttribute('data-theme', 'flyer')
-  const paper = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
-  const before = await paper()
+for (const [id, name] of [
+  ['noche', 'Noche'],
+  ['grafito', 'Grafito'],
+  ['bosque', 'Bosque'],
+  ['marea', 'Marea'],
+  ['terracota', 'Terracota'],
+]) {
+  test(`el tema ${name} cambia los colores de la app y se mantiene al recargar`, async ({ page }) => {
+    await goTo(page, 'Ajustes')
+    const html = page.locator('html')
+    await expect(html).toHaveAttribute('data-theme', 'flyer')
+    const paper = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+    const before = await paper()
 
-  await page.locator('.theme-option', { hasText: 'Noche' }).click()
-  await expect(page.getByRole('radio', { name: /Noche/ })).toBeChecked()
-  await expect(html).toHaveAttribute('data-theme', 'noche')
-  expect(await paper()).not.toBe(before)
+    await page.locator('.theme-option', { hasText: name }).click()
+    await expect(page.getByRole('radio', { name: new RegExp(name) })).toBeChecked()
+    await expect(html).toHaveAttribute('data-theme', id)
+    await expect(html).toHaveCSS('color-scheme', 'dark')
+    expect(await paper()).not.toBe(before)
 
-  await page.reload()
-  await expect(html).toHaveAttribute('data-theme', 'noche')
-  await goTo(page, 'Ajustes')
-  await expect(page.getByRole('radio', { name: /Noche/ })).toBeChecked()
-})
+    await page.reload()
+    await expect(html).toHaveAttribute('data-theme', id)
+    await goTo(page, 'Ajustes')
+    await expect(page.getByRole('radio', { name: new RegExp(name) })).toBeChecked()
+  })
+}
