@@ -4,9 +4,9 @@ API en **Laravel 13** (`php artisan --version` → `Laravel Framework 13.x`) par
 
 El contrato con el cliente está en [`../docs/sync-protocolo.md`](../docs/sync-protocolo.md) y el contexto en [`../docs/sync-etapas-2-3.md`](../docs/sync-etapas-2-3.md). Si algo de acá no coincide con el protocolo, manda el protocolo.
 
-- PHP 8.3 o más nuevo (probado con 8.5), extensiones `pdo_sqlite` (o el driver de tu base), `intl`, `mbstring` y `fileinfo`.
+- PHP 8.3 o más nuevo (probado con 8.5), extensiones `pdo_pgsql`, `intl`, `mbstring` y `fileinfo`.
 - Laravel 13, Sanctum 4 (tokens Bearer, sin cookies) y Pest 5.
-- SQLite en desarrollo y tests. El código usa sólo Eloquent y el Query Builder, así que funciona igual en MySQL 8 o Postgres.
+- PostgreSQL 18 en Docker. El código usa Eloquent y Query Builder.
 
 ## Instalación
 
@@ -15,7 +15,8 @@ cd api
 composer install
 cp .env.example .env
 php artisan key:generate
-touch database/database.sqlite
+# Definí DB_PASSWORD y POSTGRES_ADMIN_PASSWORD con claves aleatorias distintas.
+docker compose up -d --wait
 php artisan migrate
 ```
 
@@ -27,7 +28,7 @@ En `.env`:
 | `FRONTEND_URL` | Origen de la PWA, para los links de los correos. Por defecto `http://localhost:5173`. |
 | `RECEIPTS_DISK` | Disco de `config/filesystems.php` donde se guardan los comprobantes (`local` por defecto, o `s3`). |
 | `MAIL_MAILER` | `log` por defecto: los correos quedan en `storage/logs/laravel.log`. |
-| `DB_CONNECTION` | `sqlite` por defecto. Para MySQL o Postgres, completá `DB_HOST`, `DB_DATABASE`, etc. |
+| `DB_CONNECTION` | `pgsql`; PostgreSQL escucha en `127.0.0.1:5433`, sólo accesible localmente. `docker compose up -d` crea la base `rifa` y el rol `rifa_app`. |
 
 ## Correr
 
@@ -43,7 +44,7 @@ La PWA en desarrollo (`npm run dev`, `http://localhost:5173`) apunta a esta URL 
 php artisan test             # o ./vendor/bin/pest
 ```
 
-Usan SQLite en memoria (ver `phpunit.xml`), el disco de archivos falso y correos falsos: no hace falta configurar nada.
+Usan la base PostgreSQL aislada `rifa_test` (ver `phpunit.xml`), el disco de archivos falso y correos falsos. Levantá `docker compose up -d` antes de correrlos; la cuenta de aplicación es dueña de la base de pruebas.
 
 | Archivo | Qué cubre |
 |---|---|

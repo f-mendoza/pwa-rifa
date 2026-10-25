@@ -47,7 +47,7 @@ npm run test:integration  # integración real contra la API (necesita PHP, ver a
 - **Unitarios** (`tests/unit/`, [Vitest](https://vitest.dev)): precios y textos, mensajes de error, compartir/copiar, la base de datos completa (asignar, liberar, pasar, unificar personas, montos, configuración, respaldo y restauración) sobre un IndexedDB en memoria (`fake-indexeddb`), y componentes con Testing Library. `npm run test:coverage` genera la cobertura.
 - **E2E** (`tests/e2e/`, [Playwright](https://playwright.dev)): los flujos reales en dos teléfonos emulados, Android (Chromium, Pixel 7) e iPhone (WebKit, iPhone 13): vender números, ver y liberar un número, pasarlo, comprobantes con foto, corrección de montos, anular ventas, ajustes, respaldo, imagen para compartir, modo sin conexión, "reducir movimiento", contraste y que no haya scroll lateral a 320, 375 y 414 px. Levantan su propio servidor en el puerto 5199. La primera vez hay que bajar los navegadores con `npx playwright install chromium webkit`.
 
-- **Integración** (`tests/integration/`, `npm run test:integration`): levanta la API de `api/` con PHP (base SQLite y `storage` temporales, `migrate:fresh`) y corre el ciclo completo con el transporte HTTP real desde Node: dos cuentas, invitación, dos teléfonos (dos bases Dexie) que venden el mismo número, push/pull, conflicto, talonario, comprobante subido y bajado, sesión vencida y rifa borrada. Necesita PHP 8.3+ y `composer install` en `api/`; con `RIFA_API_URL=http://…/api` usa una API ya levantada. No forma parte de `npm test`.
+- **Integración** (`tests/integration/`, `npm run test:integration`): levanta la API de `api/` con PHP (base PostgreSQL aislada `rifa_integration` y `storage` temporal, `migrate:fresh`) y corre el ciclo completo con el transporte HTTP real desde Node: dos cuentas, invitación, dos teléfonos (dos bases Dexie) que venden el mismo número, push/pull, conflicto, talonario, comprobante subido y bajado, sesión vencida y rifa borrada. Necesita PHP 8.3+, `composer install` en `api/` y `docker compose up -d` desde `api/`; con `RIFA_API_URL=http://…/api` usa una API ya levantada. No forma parte de `npm test`.
 
 Stack: React 19, Vite, Dexie, vite-plugin-pwa. Fuentes empaquetadas con Fontsource (Big Shoulders Display, Outfit e Instrument Serif), así la imagen se dibuja igual sin internet.
 
@@ -60,7 +60,8 @@ Para probarlo en desarrollo:
 ```bash
 # 1. La API (Laravel 13, ver api/README.md)
 cd api && composer install && cp .env.example .env && php artisan key:generate
-touch database/database.sqlite && php artisan migrate
+# Definí DB_PASSWORD y POSTGRES_ADMIN_PASSWORD con claves aleatorias distintas.
+docker compose up -d --wait && php artisan migrate
 php artisan serve                     # http://localhost:8000/api
 
 # 2. La PWA, en otra terminal

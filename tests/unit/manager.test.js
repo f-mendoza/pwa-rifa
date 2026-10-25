@@ -125,6 +125,7 @@ describe('createSyncManager', () => {
     await a.store.assignNumbers(raffleId, [5], { name: 'Juan' })
     await vi.waitFor(async () => expect(await outbox(a.store, raffleId)).toEqual([]), { timeout: 1000 })
     expect(server.inspect(raffleId).numbers.map((n) => n.number)).toEqual([5])
+    await vi.waitFor(() => expect(m.status.state).toBe('idle'))
     expect(m.status).toMatchObject({ state: 'idle', lastSyncAt: expect.any(Number) })
   })
 
@@ -161,6 +162,7 @@ describe('createSyncManager', () => {
     m.start()
     await vi.waitFor(async () => expect(await outbox(a.store, raffleId)).toEqual([]), { timeout: 2000 })
     expect(states.filter((s) => s === 'offline')).toHaveLength(2)
+    await vi.waitFor(() => expect(m.status.state).toBe('idle'))
     expect(m.status.state).toBe('idle')
   })
 

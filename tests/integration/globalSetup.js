@@ -1,12 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 /**
  * Levanta la API de `api/` para los tests de integración:
- * - base SQLite y carpeta `storage` temporales (no toca `api/database/database.sqlite` ni los
+ * - base PostgreSQL de pruebas y carpeta `storage` temporales (no toca la base del servicio ni los
  *   comprobantes de desarrollo), con `migrate:fresh`;
  * - el servidor de PHP con el router de Laravel (lo mismo que hace `php artisan serve`, pero sin
  *   que `serve` filtre las variables de entorno que apuntan a la base temporal);
@@ -15,6 +15,15 @@ import { join, resolve } from 'node:path'
  * Con `RIFA_API_URL=http://…/api` usa una API ya levantada y no arranca nada.
  */
 const API_DIR = resolve(import.meta.dirname, '../../api')
+
+function readApiEnv() {
+  const path = join(API_DIR, '.env')
+  if (!existsSync(path)) return {}
+  return Object.fromEntries(readFileSync(path, 'utf8').split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/)
+    return match ? [[match[1], match[2].replace(/^(["'])(.*)\1$/, '$2')]] : []
+  }))
+}
 
 function freePort() {
   return new Promise((ok, fail) => {
@@ -58,16 +67,26 @@ export default async function setup({ provide }) {
   for (const dir of ['app/private', 'app/public', 'framework/cache/data', 'framework/sessions', 'framework/views', 'logs']) {
     mkdirSync(join(storage, dir), { recursive: true })
   }
-  const database = join(tmp, 'database.sqlite')
-  writeFileSync(database, '')
+  const projectEnv = readApiEnv()
+  const dbPassword = process.env.RIFA_TEST_DB_PASSWORD || projectEnv.DB_PASSWORD || process.env.DB_PASSWORD
+  if (!dbPassword) {
+    rmSync(tmp, { recursive: true, force: true })
+    throw new Error('Los tests de integración necesitan PostgreSQL en 127.0.0.1:5433 y DB_PASSWORD en api/.env.')
+  }
   const port = await freePort()
   const env = {
+    ...projectEnv,
     ...process.env,
     APP_ENV: 'local',
     APP_DEBUG: 'false',
     APP_URL: `http://127.0.0.1:${port}`,
-    DB_CONNECTION: 'sqlite',
-    DB_DATABASE: database,
+    DB_CONNECTION: 'pgsql',
+    DB_HOST: '127.0.0.1',
+    DB_PORT: '5433',
+    DB_DATABASE: 'rifa_integration',
+    DB_USERNAME: projectEnv.DB_USERNAME || 'rifa_app',
+    DB_PASSWORD: dbPassword,
+    APP_CONFIG_CACHE: join(tmp, 'config.php'),
     LARAVEL_STORAGE_PATH: storage,
     CACHE_STORE: 'array',
     SESSION_DRIVER: 'array',
@@ -77,7 +96,8 @@ export default async function setup({ provide }) {
     BCRYPT_ROUNDS: '4',
     LOG_CHANNEL: 'single',
   }
-  // variables_order=EGPCS: así Laravel ve LARAVEL_STORAGE_PATH en $_ENV.
+  // variables_order=EGPCS: Laravel ve LARAVEL_STORAGE_PATH en $_ENV. La ruta de caché distinta
+  // evita que las pruebas hereden la configuración de producción.
   const phpFlags = ['-d', 'variables_order=EGPCS']
 
   const migrate = spawnSync('php', [...phpFlags, 'artisan', 'migrate:fresh', '--force', '--no-interaction'], { cwd: API_DIR, env, encoding: 'utf8' })
